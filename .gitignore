@@ -1,5 +1,6 @@
 __pycache__/
 # *.xlsx  <-- 已取消忽略，允许上传数据文件
+update_daily_data.txt
 !data/
 .venv/
 .vscode/
