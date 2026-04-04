@@ -1,5 +1,5 @@
 __pycache__/
-*.xlsx
+# *.xlsx  <-- 已取消忽略，允许上传数据文件
 !data/
 .venv/
 .vscode/
