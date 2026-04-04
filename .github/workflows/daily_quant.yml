@@ -1,0 +1,37 @@
+name: Daily Quant Analysis
+
+on:
+  schedule:
+    # Runs at 16:30 Beijing Time (GMT+8) every day
+    # UTC 08:30 is Beijing 16:30
+    - cron: '30 8 * * *'
+  push:
+    # Triggered when data files in 'data/' folder are pushed
+    paths:
+      - 'data/**'
+  workflow_dispatch:
+    # Manual trigger for testing
+
+jobs:
+  run-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy requests
+
+      - name: Run Quant Bot
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: |
+          python main.py
