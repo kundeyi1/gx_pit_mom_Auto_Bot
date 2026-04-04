@@ -94,9 +94,9 @@ try:
             current_signal_type = f"触发: {results[sector][-1]['type']}"
 
     with col1:
-        st.markdown(f'<div class="metric-card"><div class="column-label">最新价格</div><div class="value-label" style="color:{"#f85149" if price_pct < 0 else "#3fb950"}">{current_price:.2f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="column-label">最新价格</div><div class="value-label" style="color:{"#3fb950" if price_pct < 0 else "#f85149"}">{current_price:.2f}</div></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="metric-card"><div class="column-label">日内涨跌</div><div class="value-label" style="color:{"#f85149" if price_pct < 0 else "#3fb950"}">{price_pct:+.2f}%</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="column-label">日内涨跌</div><div class="value-label" style="color:{"#3fb950" if price_pct < 0 else "#f85149"}">{price_pct:+.2f}%</div></div>', unsafe_allow_html=True)
     with col3:
         st.markdown(f'<div class="metric-card"><div class="column-label">策略信号</div><div class="value-label">{current_signal_type}</div></div>', unsafe_allow_html=True)
 
