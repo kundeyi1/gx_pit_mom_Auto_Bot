@@ -30,7 +30,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Data Loading & Analysis ---
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)  # 缩短缓存失效时间为 60 分钟
 def get_analysis_results():
     analyzer = GXPitMomActions(data_dir='./data/')
     index_data = analyzer.dp.get_wide_table('000985_prices.xlsx')
@@ -125,7 +125,7 @@ try:
             with tabs[i]:
                 if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
                     latest_res = results[sector][-1]
-                    limit = 5 if sector == '中信一级行业' else 10
+                    limit = 10
                     for name, val in latest_res['series'].head(limit).items():
                         st.markdown(f'<div style="padding: 8px 15px; margin-bottom: 5px; background-color: #1c2128; border-left: 4px solid #58a6ff; border-radius: 4px;"><b style="color: #c9d1d9;">{name}</b> <span style="color: #58a6ff; margin-left:10px;">({val:.4f})</span></div>', unsafe_allow_html=True)
 
@@ -179,7 +179,7 @@ try:
                     <div style="flex:1.8; text-align:right;">收益率(超额)</div>
                 </div>""", unsafe_allow_html=True)
 
-                for name, val in last_sig['series'].head(5 if sector=='中信一级行业' else 10).items():
+                for name, val in last_sig['series'].head(10).items():
                     r_val = returns.get(name, 0.0)
                     excess = r_val - idx_ret
                     st.markdown(f"""
