@@ -268,10 +268,48 @@ try:
                 else:
                     returns = pd.Series(0.0, index=sector_price_map[sector].columns)
 
+                # 当期多头/多空组合收益率（基于因子值降序）
+                sorted_series = last_sig['series'].dropna()
+                aligned_ret = returns.reindex(sorted_series.index).dropna()
+                n_avail = len(aligned_ret)
+                def _avg2(sub):
+                    return float(sub.mean()) if len(sub) > 0 else 0.0
+                cur_long5 = _avg2(aligned_ret.head(min(5, n_avail)))
+                cur_long10 = _avg2(aligned_ret.head(min(10, n_avail)))
+                k5c = min(5, n_avail // 2)
+                k10c = min(10, n_avail // 2)
+                cur_ls5 = _avg2(aligned_ret.head(k5c)) - _avg2(aligned_ret.tail(k5c)) if k5c > 0 else 0.0
+                cur_ls10 = _avg2(aligned_ret.head(k10c)) - _avg2(aligned_ret.tail(k10c)) if k10c > 0 else 0.0
+                hold_days = min(20, max(len(after_prices) - 1, 0))
+
                 st.markdown(f"""
-                <div style="padding:8px 12px; margin-bottom:8px; background-color:#0d1117; border:1px dashed #30363d; border-radius:6px; color:#8b949e; font-size:0.8em;">
-                    最近触发: <b style="color:#c9d1d9;">{last_sig['date'].strftime('%Y-%m-%d')}</b>
-                    · <span style="color:#58a6ff;">{last_sig['type']}</span>
+                <div style="padding:10px 14px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-left:3px solid #58a6ff; border-radius:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="color:#c9d1d9; font-size:0.85em;">
+                            <span style="color:#8b949e;">最近触发</span>
+                            &nbsp;<b>{last_sig['date'].strftime('%Y-%m-%d')}</b>
+                            &nbsp;·&nbsp;<span style="color:#58a6ff;">{last_sig['type']}</span>
+                        </div>
+                        <span style="color:#8b949e; font-size:0.72em;">当期 · 持有 {hold_days}D</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px;">
+                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
+                            <div style="color:#8b949e; font-size:0.7em;">多头 T5</div>
+                            <div style="color:{_color(cur_long5)}; font-weight:bold; font-size:0.95em;">{cur_long5:+.2f}%</div>
+                        </div>
+                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
+                            <div style="color:#8b949e; font-size:0.7em;">多头 T10</div>
+                            <div style="color:{_color(cur_long10)}; font-weight:bold; font-size:0.95em;">{cur_long10:+.2f}%</div>
+                        </div>
+                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
+                            <div style="color:#8b949e; font-size:0.7em;">多空 T5</div>
+                            <div style="color:{_color(cur_ls5)}; font-weight:bold; font-size:0.95em;">{cur_ls5:+.2f}%</div>
+                        </div>
+                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
+                            <div style="color:#8b949e; font-size:0.7em;">多空 T10</div>
+                            <div style="color:{_color(cur_ls10)}; font-weight:bold; font-size:0.95em;">{cur_ls10:+.2f}%</div>
+                        </div>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 
