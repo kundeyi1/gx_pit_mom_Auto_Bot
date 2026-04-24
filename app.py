@@ -46,10 +46,23 @@ def get_analysis_results():
         '中信一级行业': analyzer.calculate_fused_signals(zx_yj_prices, signals_dict),
         '中信二级行业': analyzer.calculate_fused_signals(zx_ej_prices, signals_dict)
     }
-    return results, index_data, zx_yj_prices, zx_ej_prices
+
+    # 读取历史分组业绩明细 CSV
+    def _load_group_detail(path):
+        try:
+            df = pd.read_csv(path, parse_dates=['date'])
+            return df
+        except Exception:
+            return pd.DataFrame()
+
+    hist_detail = {
+        '中信一级行业': _load_group_detail('./data/group_assignment_details_zx_yjhy.csv'),
+        '中信二级行业': _load_group_detail('./data/group_assignment_details_zx_ejhy.csv'),
+    }
+    return results, index_data, zx_yj_prices, zx_ej_prices, hist_detail
 
 try:
-    results, index_data, zx_yj_prices, zx_ej_prices = get_analysis_results()
+    results, index_data, zx_yj_prices, zx_ej_prices, hist_detail = get_analysis_results()
     
     if index_data.empty:
         st.warning("📊 暂无中证全指数据。")
@@ -158,61 +171,113 @@ try:
 
     h_col1, h_col2 = st.columns(2)
     sector_price_map = {'中信一级行业': zx_yj_prices, '中信二级行业': zx_ej_prices}
+
+    def _compute_hist_portfolio_stats(detail_df):
+        """基于 CSV 历史分组明细，按 date 聚合多头/多空 Top5/Top10 的期收益率。
+
+        约定：factor_value 越大越多头。period_return/excess_return 为小数（×100 显示为 %）。
+        """
+        if detail_df is None or detail_df.empty:
+            return pd.DataFrame()
+        rows = []
+        for dt, grp in detail_df.groupby('date'):
+            g = grp.sort_values('factor_value', ascending=False)
+            n = len(g)
+            if n < 2:
+                continue
+            rets = g['period_return'].values * 100
+            excess = g['excess_return'].values * 100
+            def _avg(arr):
+                return float(np.mean(arr)) if len(arr) > 0 else np.nan
+            k5_ls = min(5, n // 2)
+            k10_ls = min(10, n // 2)
+            rows.append({
+                'date': dt,
+                'long5': _avg(rets[:min(5, n)]),
+                'long10': _avg(rets[:min(10, n)]),
+                'long5_ex': _avg(excess[:min(5, n)]),
+                'long10_ex': _avg(excess[:min(10, n)]),
+                'ls5': _avg(rets[:k5_ls]) - _avg(rets[-k5_ls:]) if k5_ls > 0 else np.nan,
+                'ls10': _avg(rets[:k10_ls]) - _avg(rets[-k10_ls:]) if k10_ls > 0 else np.nan,
+            })
+        return pd.DataFrame(rows).sort_values('date').reset_index(drop=True)
+
+    def _color(v):
+        return '#f85149' if v >= 0 else '#3fb950'
+
     for i, sector in enumerate(['中信一级行业', '中信二级行业']):
         with [h_col1, h_col2][i]:
-            st.markdown(f"**{sector}**")
-            # 找到最近一次信号
-            valid_results = [r for r in results[sector] if r['date'] <= latest_date_dt]
-            if valid_results:
-                last_sig = valid_results[-1]
-                after_prices = sector_price_map[sector].loc[last_sig['date']:]
-                if len(after_prices) > 1:
-                    t_idx = min(20, len(after_prices)-1)
-                    returns = (after_prices.iloc[t_idx]/after_prices.iloc[0]-1)*100
-                else: returns = pd.Series(0.0, index=sector_price_map[sector].columns)
+            st.markdown(f"#### {sector}")
+            # 历史统计卡片
+            hist_df = _compute_hist_portfolio_stats(hist_detail.get(sector, pd.DataFrame()))
+            if not hist_df.empty:
+                n_total = len(hist_df)
 
-                # 当期多头/多空组合收益率（基于因子值排序）
-                sorted_series = last_sig['series'].dropna()
-                aligned_ret = returns.reindex(sorted_series.index).dropna()
-                n_avail = len(aligned_ret)
-                def _avg(sub):
-                    return float(sub.mean()) if len(sub) > 0 else 0.0
-                long_top5 = _avg(aligned_ret.head(min(5, n_avail)))
-                long_top10 = _avg(aligned_ret.head(min(10, n_avail)))
-                k5 = min(5, n_avail // 2)
-                k10 = min(10, n_avail // 2)
-                ls_top5 = _avg(aligned_ret.head(k5)) - _avg(aligned_ret.tail(k5)) if k5 > 0 else 0.0
-                ls_top10 = _avg(aligned_ret.head(k10)) - _avg(aligned_ret.tail(k10)) if k10 > 0 else 0.0
+                def _stat(col):
+                    s = hist_df[col].dropna()
+                    if len(s) == 0:
+                        return 0.0, 0.0
+                    return float(s.mean()), float((s > 0).mean() * 100)
 
-                def _color(v):
-                    return '#f85149' if v >= 0 else '#3fb950'
+                lg5_avg, lg5_wr = _stat('long5')
+                lg10_avg, lg10_wr = _stat('long10')
+                ls5_avg, ls5_wr = _stat('ls5')
+                ls10_avg, ls10_wr = _stat('ls10')
+                lg5_ex, _ = _stat('long5_ex')
+                lg10_ex, _ = _stat('long10_ex')
+
                 st.markdown(f"""
-                <div style="padding: 10px 12px; margin-bottom: 10px; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px;">
-                    <div style="color:#8b949e; font-size:0.8em; margin-bottom:6px;">当期组合收益率 (20D或至今)</div>
-                    <div style="display:flex; justify-content:space-between; gap:6px;">
-                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
-                            <div style="color:#8b949e; font-size:0.75em;">多头Top5</div>
-                            <div style="color:{_color(long_top5)}; font-weight:bold; font-size:0.95em;">{long_top5:+.2f}%</div>
+                <div style="padding: 12px 14px; margin-bottom: 12px; background: linear-gradient(180deg,#161b22 0%,#12171e 100%); border: 1px solid #30363d; border-radius: 8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#c9d1d9; font-size:0.9em; font-weight:600;">📈 历史组合表现</span>
+                        <span style="color:#8b949e; font-size:0.75em;">样本 {n_total} 次</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #58a6ff;">
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 Top5 · 平均</div>
+                            <div style="color:{_color(lg5_avg)}; font-weight:bold; font-size:1.1em;">{lg5_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg5_ex)};">{lg5_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg5_wr:.0f}%</span></div>
                         </div>
-                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
-                            <div style="color:#8b949e; font-size:0.75em;">多头Top10</div>
-                            <div style="color:{_color(long_top10)}; font-weight:bold; font-size:0.95em;">{long_top10:+.2f}%</div>
+                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #58a6ff;">
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 Top10 · 平均</div>
+                            <div style="color:{_color(lg10_avg)}; font-weight:bold; font-size:1.1em;">{lg10_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg10_ex)};">{lg10_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg10_wr:.0f}%</span></div>
                         </div>
-                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
-                            <div style="color:#8b949e; font-size:0.75em;">多空Top5</div>
-                            <div style="color:{_color(ls_top5)}; font-weight:bold; font-size:0.95em;">{ls_top5:+.2f}%</div>
+                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #d29922;">
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 Top5 · 平均</div>
+                            <div style="color:{_color(ls5_avg)}; font-weight:bold; font-size:1.1em;">{ls5_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls5_wr:.0f}%</span></div>
                         </div>
-                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
-                            <div style="color:#8b949e; font-size:0.75em;">多空Top10</div>
-                            <div style="color:{_color(ls_top10)}; font-weight:bold; font-size:0.95em;">{ls_top10:+.2f}%</div>
+                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #d29922;">
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 Top10 · 平均</div>
+                            <div style="color:{_color(ls10_avg)}; font-weight:bold; font-size:1.1em;">{ls10_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls10_wr:.0f}%</span></div>
                         </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
+            # 最近一次信号详情
+            valid_results = [r for r in results[sector] if r['date'] <= latest_date_dt]
+            if valid_results:
+                last_sig = valid_results[-1]
+                after_prices = sector_price_map[sector].loc[last_sig['date']:]
+                if len(after_prices) > 1:
+                    t_idx = min(20, len(after_prices) - 1)
+                    returns = (after_prices.iloc[t_idx] / after_prices.iloc[0] - 1) * 100
+                else:
+                    returns = pd.Series(0.0, index=sector_price_map[sector].columns)
+
+                st.markdown(f"""
+                <div style="padding:8px 12px; margin-bottom:8px; background-color:#0d1117; border:1px dashed #30363d; border-radius:6px; color:#8b949e; font-size:0.8em;">
+                    最近触发: <b style="color:#c9d1d9;">{last_sig['date'].strftime('%Y-%m-%d')}</b>
+                    · <span style="color:#58a6ff;">{last_sig['type']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
                 # Add Table Header
                 st.markdown("""
-                <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; margin-bottom:8px; border-bottom: 2px solid #30363d; font-weight: bold; color: #8b949e;">
+                <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:6px; font-weight: bold; color: #8b949e;">
                     <div style="flex:2.2;">行业名称</div>
                     <div style="flex:1; text-align:center;">因子值</div>
                     <div style="flex:1.8; text-align:right;">收益率(超额)</div>
@@ -222,12 +287,12 @@ try:
                     r_val = returns.get(name, 0.0)
                     excess = r_val - idx_ret
                     st.markdown(f"""
-                    <div style="padding: 12px 10px; background-color: #161b22; border-left: 3px solid #30363d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95em; margin-bottom:4px;">
+                    <div style="padding: 10px; background-color: #161b22; border-left: 3px solid #30363d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:4px;">
                         <div style="flex:2.2; color:#c9d1d9;"><b>{name}</b></div>
                         <div style="flex:1; text-align:center; color:#58a6ff;">{val:.4f}</div>
                         <div style="flex:1.8; text-align:right;">
-                            <span style="color:{'#f85149' if r_val>=0 else '#3fb950'}; font-weight:bold;">{r_val:+.2f}%</span>
-                            <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{'#f85149' if excess>=0 else '#3fb950'}">{excess:+.2f}%</span>]</span>
+                            <span style="color:{_color(r_val)}; font-weight:bold;">{r_val:+.2f}%</span>
+                            <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{_color(excess)}">{excess:+.2f}%</span>]</span>
                         </div>
                     </div>""", unsafe_allow_html=True)
 except Exception as e: st.error(f"Error: {e}")
