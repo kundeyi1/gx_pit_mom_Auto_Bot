@@ -207,6 +207,12 @@ try:
 
     for i, sector in enumerate(['中信一级行业', '中信二级行业']):
         with [h_col1, h_col2][i]:
+            top_n = 5 if sector == '中信一级行业' else 10  # 一级→T5；二级→T10
+            long_col = f'long{top_n}'
+            long_ex_col = f'long{top_n}_ex'
+            ls_col = f'ls{top_n}'
+            tag = f'T{top_n}'
+
             st.markdown(f"#### {sector}")
             # 历史统计卡片
             hist_df = _compute_hist_portfolio_stats(hist_detail.get(sector, pd.DataFrame()))
@@ -219,12 +225,9 @@ try:
                         return 0.0, 0.0
                     return float(s.mean()), float((s > 0).mean() * 100)
 
-                lg5_avg, lg5_wr = _stat('long5')
-                lg10_avg, lg10_wr = _stat('long10')
-                ls5_avg, ls5_wr = _stat('ls5')
-                ls10_avg, ls10_wr = _stat('ls10')
-                lg5_ex, _ = _stat('long5_ex')
-                lg10_ex, _ = _stat('long10_ex')
+                lg_avg, lg_wr = _stat(long_col)
+                lg_ex, _ = _stat(long_ex_col)
+                ls_avg, ls_wr = _stat(ls_col)
 
                 st.markdown(f"""
                 <div style="padding: 12px 14px; margin-bottom: 12px; background: linear-gradient(180deg,#161b22 0%,#12171e 100%); border: 1px solid #30363d; border-radius: 8px;">
@@ -234,24 +237,14 @@ try:
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
                         <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #58a6ff;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 Top5 · 平均</div>
-                            <div style="color:{_color(lg5_avg)}; font-weight:bold; font-size:1.1em;">{lg5_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg5_ex)};">{lg5_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg5_wr:.0f}%</span></div>
-                        </div>
-                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #58a6ff;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 Top10 · 平均</div>
-                            <div style="color:{_color(lg10_avg)}; font-weight:bold; font-size:1.1em;">{lg10_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg10_ex)};">{lg10_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg10_wr:.0f}%</span></div>
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 {tag} · 平均</div>
+                            <div style="color:{_color(lg_avg)}; font-weight:bold; font-size:1.1em;">{lg_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg_ex)};">{lg_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg_wr:.0f}%</span></div>
                         </div>
                         <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #d29922;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 Top5 · 平均</div>
-                            <div style="color:{_color(ls5_avg)}; font-weight:bold; font-size:1.1em;">{ls5_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls5_wr:.0f}%</span></div>
-                        </div>
-                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #d29922;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 Top10 · 平均</div>
-                            <div style="color:{_color(ls10_avg)}; font-weight:bold; font-size:1.1em;">{ls10_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls10_wr:.0f}%</span></div>
+                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 {tag} · 平均</div>
+                            <div style="color:{_color(ls_avg)}; font-weight:bold; font-size:1.1em;">{ls_avg:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls_wr:.0f}%</span></div>
                         </div>
                     </div>
                 </div>
@@ -274,12 +267,10 @@ try:
                 n_avail = len(aligned_ret)
                 def _avg2(sub):
                     return float(sub.mean()) if len(sub) > 0 else 0.0
-                cur_long5 = _avg2(aligned_ret.head(min(5, n_avail)))
-                cur_long10 = _avg2(aligned_ret.head(min(10, n_avail)))
-                k5c = min(5, n_avail // 2)
-                k10c = min(10, n_avail // 2)
-                cur_ls5 = _avg2(aligned_ret.head(k5c)) - _avg2(aligned_ret.tail(k5c)) if k5c > 0 else 0.0
-                cur_ls10 = _avg2(aligned_ret.head(k10c)) - _avg2(aligned_ret.tail(k10c)) if k10c > 0 else 0.0
+                cur_long = _avg2(aligned_ret.head(min(top_n, n_avail)))
+                cur_long_ex = cur_long - idx_ret
+                k_ls = min(top_n, n_avail // 2)
+                cur_ls = _avg2(aligned_ret.head(k_ls)) - _avg2(aligned_ret.tail(k_ls)) if k_ls > 0 else 0.0
                 hold_days = min(20, max(len(after_prices) - 1, 0))
 
                 st.markdown(f"""
@@ -292,22 +283,15 @@ try:
                         </div>
                         <span style="color:#8b949e; font-size:0.72em;">当期 · 持有 {hold_days}D</span>
                     </div>
-                    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px;">
-                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
-                            <div style="color:#8b949e; font-size:0.7em;">多头 T5</div>
-                            <div style="color:{_color(cur_long5)}; font-weight:bold; font-size:0.95em;">{cur_long5:+.2f}%</div>
+                    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:6px;">
+                        <div style="background-color:#1c2128; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #58a6ff;">
+                            <div style="color:#8b949e; font-size:0.7em;">多头 {tag}</div>
+                            <div style="color:{_color(cur_long)}; font-weight:bold; font-size:1em;">{cur_long:+.2f}%</div>
+                            <div style="color:#8b949e; font-size:0.68em; margin-top:2px;">超额 <span style="color:{_color(cur_long_ex)};">{cur_long_ex:+.2f}%</span></div>
                         </div>
-                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
-                            <div style="color:#8b949e; font-size:0.7em;">多头 T10</div>
-                            <div style="color:{_color(cur_long10)}; font-weight:bold; font-size:0.95em;">{cur_long10:+.2f}%</div>
-                        </div>
-                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
-                            <div style="color:#8b949e; font-size:0.7em;">多空 T5</div>
-                            <div style="color:{_color(cur_ls5)}; font-weight:bold; font-size:0.95em;">{cur_ls5:+.2f}%</div>
-                        </div>
-                        <div style="background-color:#1c2128; padding:6px 4px; border-radius:4px; text-align:center;">
-                            <div style="color:#8b949e; font-size:0.7em;">多空 T10</div>
-                            <div style="color:{_color(cur_ls10)}; font-weight:bold; font-size:0.95em;">{cur_ls10:+.2f}%</div>
+                        <div style="background-color:#1c2128; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #d29922;">
+                            <div style="color:#8b949e; font-size:0.7em;">多空 {tag}</div>
+                            <div style="color:{_color(cur_ls)}; font-weight:bold; font-size:1em;">{cur_ls:+.2f}%</div>
                         </div>
                     </div>
                 </div>
@@ -321,7 +305,7 @@ try:
                     <div style="flex:1.8; text-align:right;">收益率(超额)</div>
                 </div>""", unsafe_allow_html=True)
 
-                for name, val in last_sig['series'].head(10).items():
+                for name, val in last_sig['series'].head(top_n).items():
                     r_val = returns.get(name, 0.0)
                     excess = r_val - idx_ret
                     st.markdown(f"""
