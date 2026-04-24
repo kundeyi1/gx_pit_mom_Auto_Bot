@@ -170,7 +170,46 @@ try:
                     t_idx = min(20, len(after_prices)-1)
                     returns = (after_prices.iloc[t_idx]/after_prices.iloc[0]-1)*100
                 else: returns = pd.Series(0.0, index=sector_price_map[sector].columns)
-                
+
+                # 当期多头/多空组合收益率（基于因子值排序）
+                sorted_series = last_sig['series'].dropna()
+                aligned_ret = returns.reindex(sorted_series.index).dropna()
+                n_avail = len(aligned_ret)
+                def _avg(sub):
+                    return float(sub.mean()) if len(sub) > 0 else 0.0
+                long_top5 = _avg(aligned_ret.head(min(5, n_avail)))
+                long_top10 = _avg(aligned_ret.head(min(10, n_avail)))
+                k5 = min(5, n_avail // 2)
+                k10 = min(10, n_avail // 2)
+                ls_top5 = _avg(aligned_ret.head(k5)) - _avg(aligned_ret.tail(k5)) if k5 > 0 else 0.0
+                ls_top10 = _avg(aligned_ret.head(k10)) - _avg(aligned_ret.tail(k10)) if k10 > 0 else 0.0
+
+                def _color(v):
+                    return '#f85149' if v >= 0 else '#3fb950'
+                st.markdown(f"""
+                <div style="padding: 10px 12px; margin-bottom: 10px; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px;">
+                    <div style="color:#8b949e; font-size:0.8em; margin-bottom:6px;">当期组合收益率 (20D或至今)</div>
+                    <div style="display:flex; justify-content:space-between; gap:6px;">
+                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
+                            <div style="color:#8b949e; font-size:0.75em;">多头Top5</div>
+                            <div style="color:{_color(long_top5)}; font-weight:bold; font-size:0.95em;">{long_top5:+.2f}%</div>
+                        </div>
+                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
+                            <div style="color:#8b949e; font-size:0.75em;">多头Top10</div>
+                            <div style="color:{_color(long_top10)}; font-weight:bold; font-size:0.95em;">{long_top10:+.2f}%</div>
+                        </div>
+                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
+                            <div style="color:#8b949e; font-size:0.75em;">多空Top5</div>
+                            <div style="color:{_color(ls_top5)}; font-weight:bold; font-size:0.95em;">{ls_top5:+.2f}%</div>
+                        </div>
+                        <div style="flex:1; text-align:center; background-color:#1c2128; padding:6px 4px; border-radius:4px;">
+                            <div style="color:#8b949e; font-size:0.75em;">多空Top10</div>
+                            <div style="color:{_color(ls_top10)}; font-weight:bold; font-size:0.95em;">{ls_top10:+.2f}%</div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
                 # Add Table Header
                 st.markdown("""
                 <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; margin-bottom:8px; border-bottom: 2px solid #30363d; font-weight: bold; color: #8b949e;">
