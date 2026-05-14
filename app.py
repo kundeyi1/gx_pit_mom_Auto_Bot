@@ -131,7 +131,7 @@ try:
     """, unsafe_allow_html=True)
 
     # --- Task 1 & 2: History Trace with Benchmarking ---
-    st.markdown("### 📊 当前或上次信号结果统计")
+    st.markdown("### 📊 当前、历史信号结果统计")
     
     overall_last_sig_date, overall_last_sig_type = None, "N/A"
     for s in ['中信一级行业', '中信二级行业']:
