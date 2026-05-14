@@ -130,51 +130,8 @@ try:
     </div>
     """, unsafe_allow_html=True)
 
-    # --- Today's Ranking ---
-    if current_has_signal:
-        st.markdown("### 📊 本次触发行业评分")
-        tabs = st.tabs(["中信一级", "中信二级"])
-        for i, sector in enumerate(['中信一级行业', '中信二级行业']):
-            with tabs[i]:
-                if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
-                    latest_res = results[sector][-1]
-                    limit = 10
-                    for name, val in latest_res['series'].head(limit).items():
-                        st.markdown(f'<div style="padding: 8px 15px; margin-bottom: 5px; background-color: #1c2128; border-left: 4px solid #58a6ff; border-radius: 4px;"><b style="color: #c9d1d9;">{name}</b> <span style="color: #58a6ff; margin-left:10px;">({val:.4f})</span></div>', unsafe_allow_html=True)
-
-    # --- 今日行业涨幅 Top5 ---
-    st.markdown("### 🚀 当天行业涨幅 Top5")
-    top_col1, top_col2 = st.columns(2)
-    daily_ret_map = {
-        '中信一级行业': zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
-        '中信二级行业': zx_ej_prices.pct_change().iloc[-1] * 100 if len(zx_ej_prices) > 1 else pd.Series(dtype=float),
-    }
-
-    for i, sector in enumerate(['中信一级行业', '中信二级行业']):
-        with [top_col1, top_col2][i]:
-            top5 = daily_ret_map[sector].dropna().sort_values(ascending=False).head(5)
-            st.markdown(f"""
-            <div style="padding:10px 12px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-radius:8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="color:#c9d1d9; font-weight:600; font-size:0.9em;">{sector}</span>
-                    <span style="color:#8b949e; font-size:0.72em;">{latest_date_str}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if top5.empty:
-                st.markdown('<div style="padding:10px; color:#8b949e; background-color:#161b22; border:1px dashed #30363d; border-radius:6px;">暂无可用数据</div>', unsafe_allow_html=True)
-            else:
-                for rank, (name, ret_val) in enumerate(top5.items(), start=1):
-                    st.markdown(f"""
-                    <div style="padding:9px 10px; margin-bottom:4px; background-color:#161b22; border-left:3px solid #58a6ff; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
-                        <div style="color:#c9d1d9; font-size:0.9em;"><span style="color:#8b949e; margin-right:8px;">#{rank}</span><b>{name}</b></div>
-                        <div style="color:{'#f85149' if ret_val >= 0 else '#3fb950'}; font-weight:bold; font-size:0.92em;">{ret_val:+.2f}%</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
     # --- Task 1 & 2: History Trace with Benchmarking ---
-    st.markdown("<br><h3>🕒 历史信号溯源</h3>", unsafe_allow_html=True)
+    st.markdown("### 📊 当前或上次信号结果统计")
     
     overall_last_sig_date, overall_last_sig_type = None, "N/A"
     for s in ['中信一级行业', '中信二级行业']:
@@ -348,5 +305,36 @@ try:
                             <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{_color(excess)}">{excess:+.2f}%</span>]</span>
                         </div>
                     </div>""", unsafe_allow_html=True)
+
+    # --- 今日行业涨幅 Top5 ---
+    st.markdown("### 🚀 当天行业涨幅 Top5")
+    top_col1, top_col2 = st.columns(2)
+    daily_ret_map = {
+        '中信一级行业': zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
+        '中信二级行业': zx_ej_prices.pct_change().iloc[-1] * 100 if len(zx_ej_prices) > 1 else pd.Series(dtype=float),
+    }
+
+    for i, sector in enumerate(['中信一级行业', '中信二级行业']):
+        with [top_col1, top_col2][i]:
+            top5 = daily_ret_map[sector].dropna().sort_values(ascending=False).head(5)
+            st.markdown(f"""
+            <div style="padding:10px 12px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="color:#c9d1d9; font-weight:600; font-size:0.9em;">{sector}</span>
+                    <span style="color:#8b949e; font-size:0.72em;">{latest_date_str}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if top5.empty:
+                st.markdown('<div style="padding:10px; color:#8b949e; background-color:#161b22; border:1px dashed #30363d; border-radius:6px;">暂无可用数据</div>', unsafe_allow_html=True)
+            else:
+                for rank, (name, ret_val) in enumerate(top5.items(), start=1):
+                    st.markdown(f"""
+                    <div style="padding:9px 10px; margin-bottom:4px; background-color:#161b22; border-left:3px solid #58a6ff; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
+                        <div style="color:#c9d1d9; font-size:0.9em;"><span style="color:#8b949e; margin-right:8px;">#{rank}</span><b>{name}</b></div>
+                        <div style="color:{'#f85149' if ret_val >= 0 else '#3fb950'}; font-weight:bold; font-size:0.92em;">{ret_val:+.2f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 except Exception as e: st.error(f"Error: {e}")
 st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
