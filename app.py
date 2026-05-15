@@ -285,29 +285,35 @@ try:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Add Table Header
-                st.markdown("""
-                <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:6px; font-weight: bold; color: #8b949e;">
-                    <div style="flex:2.2;">行业名称</div>
-                    <div style="flex:1; text-align:center;">因子值</div>
-                    <div style="flex:1.8; text-align:right;">收益率(超额)</div>
-                </div>""", unsafe_allow_html=True)
-
-                for name, val in last_sig['series'].head(top_n).items():
-                    r_val = returns.get(name, 0.0)
-                    excess = r_val - idx_ret
+                def _render_factor_table(title, factor_items, accent_color):
                     st.markdown(f"""
-                    <div style="padding: 10px; background-color: #161b22; border-left: 3px solid #30363d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:4px;">
-                        <div style="flex:2.2; color:#c9d1d9;"><b>{name}</b></div>
-                        <div style="flex:1; text-align:center; color:#58a6ff;">{val:.4f}</div>
-                        <div style="flex:1.8; text-align:right;">
-                            <span style="color:{_color(r_val)}; font-weight:bold;">{r_val:+.2f}%</span>
-                            <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{_color(excess)}">{excess:+.2f}%</span>]</span>
-                        </div>
+                    <div style="padding: 8px 10px; margin: 10px 0 6px; background-color:#21262d; border-left:3px solid {accent_color}; border-radius:4px; color:#c9d1d9; font-size:0.9em; font-weight:600;">
+                        {title}
+                    </div>
+                    <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:6px; font-weight: bold; color: #8b949e;">
+                        <div style="flex:2.2;">行业名称</div>
+                        <div style="flex:1; text-align:center;">因子值</div>
+                        <div style="flex:1.8; text-align:right;">收益率(超额)</div>
                     </div>""", unsafe_allow_html=True)
 
-    # --- 今日行业涨幅 Top5 ---
-    st.markdown("### 🚀 当天行业涨幅 Top5")
+                    for name, val in factor_items.items():
+                        r_val = returns.get(name, 0.0)
+                        excess = r_val - idx_ret
+                        st.markdown(f"""
+                        <div style="padding: 10px; background-color: #161b22; border-left: 3px solid #30363d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:4px;">
+                            <div style="flex:2.2; color:#c9d1d9;"><b>{name}</b></div>
+                            <div style="flex:1; text-align:center; color:#58a6ff;">{val:.4f}</div>
+                            <div style="flex:1.8; text-align:right;">
+                                <span style="color:{_color(r_val)}; font-weight:bold;">{r_val:+.2f}%</span>
+                                <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{_color(excess)}">{excess:+.2f}%</span>]</span>
+                            </div>
+                        </div>""", unsafe_allow_html=True)
+
+                _render_factor_table(f"因子值前 {tag}", last_sig['series'].head(top_n), "#58a6ff")
+                _render_factor_table(f"因子值后 {tag}", last_sig['series'].tail(top_n).sort_values(ascending=False), "#d29922")
+
+    # --- 今日行业涨幅 Top10 ---
+    st.markdown("### 🚀 当天行业涨幅 Top10")
     top_col1, top_col2 = st.columns(2)
     daily_ret_map = {
         '中信一级行业': zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
@@ -316,7 +322,9 @@ try:
 
     for i, sector in enumerate(['中信一级行业', '中信二级行业']):
         with [top_col1, top_col2][i]:
-            top5 = daily_ret_map[sector].dropna().sort_values(ascending=False).head(5)
+            sorted_daily_ret = daily_ret_map[sector].dropna().sort_values(ascending=False)
+            top10 = sorted_daily_ret.head(10)
+            bottom10 = sorted_daily_ret.tail(10).sort_values(ascending=False)
             st.markdown(f"""
             <div style="padding:10px 12px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-radius:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -326,15 +334,25 @@ try:
             </div>
             """, unsafe_allow_html=True)
 
-            if top5.empty:
-                st.markdown('<div style="padding:10px; color:#8b949e; background-color:#161b22; border:1px dashed #30363d; border-radius:6px;">暂无可用数据</div>', unsafe_allow_html=True)
-            else:
-                for rank, (name, ret_val) in enumerate(top5.items(), start=1):
+            def _render_daily_return_list(title, items, accent_color):
+                st.markdown(f"""
+                <div style="padding:8px 10px; margin:10px 0 6px; background-color:#21262d; border-left:3px solid {accent_color}; border-radius:4px; color:#c9d1d9; font-size:0.88em; font-weight:600;">
+                    {title}
+                </div>
+                """, unsafe_allow_html=True)
+
+                for rank, (name, ret_val) in enumerate(items.items(), start=1):
                     st.markdown(f"""
                     <div style="padding:9px 10px; margin-bottom:4px; background-color:#161b22; border-left:3px solid #58a6ff; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
                         <div style="color:#c9d1d9; font-size:0.9em;"><span style="color:#8b949e; margin-right:8px;">#{rank}</span><b>{name}</b></div>
                         <div style="color:{'#f85149' if ret_val >= 0 else '#3fb950'}; font-weight:bold; font-size:0.92em;">{ret_val:+.2f}%</div>
                     </div>
                     """, unsafe_allow_html=True)
+
+            if top10.empty:
+                st.markdown('<div style="padding:10px; color:#8b949e; background-color:#161b22; border:1px dashed #30363d; border-radius:6px;">暂无可用数据</div>', unsafe_allow_html=True)
+            else:
+                _render_daily_return_list("涨幅前 Top10", top10, "#58a6ff")
+                _render_daily_return_list("涨幅后 Top10", bottom10, "#d29922")
 except Exception as e: st.error(f"Error: {e}")
 st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
