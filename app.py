@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import os
 from datetime import datetime
 from src.analysis import GXPitMomActions
 
@@ -30,12 +31,72 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Data Loading & Analysis ---
-@st.cache_data(ttl=3600)  # 缩短缓存失效时间为 60 分钟
-def get_analysis_results():
+DATA_FILES = (
+    '000985_prices.xlsx',
+    'ZX_YJHY.xlsx',
+    'ZX_EJHY.xlsx',
+    'group_assignment_details_zx_yjhy.csv',
+    'group_assignment_details_zx_ejhy.csv',
+)
+
+EXCLUDED_ASSET_KEYWORDS = ('资产管理',)
+
+
+def get_data_signature(data_dir='./data/'):
+    """Return a lightweight fingerprint so Streamlit cache refreshes after data updates."""
+    signature = []
+    for file_name in DATA_FILES:
+        path = os.path.join(data_dir, file_name)
+        try:
+            stat = os.stat(path)
+            signature.append((file_name, stat.st_mtime_ns, stat.st_size))
+        except FileNotFoundError:
+            signature.append((file_name, None, None))
+    return tuple(signature)
+
+
+def _filter_group_detail_to_current_universe(detail_df, price_df):
+    if detail_df is None or detail_df.empty or price_df is None or price_df.empty:
+        return detail_df
+    asset_col = next((c for c in ('sector', 'asset_code', 'asset_name') if c in detail_df.columns), None)
+    if asset_col is None:
+        return detail_df
+    current_assets = set(price_df.columns)
+    current_asset_names = {str(c).split(':')[-1].lower() for c in price_df.columns}
+    detail_assets = detail_df[asset_col].astype(str)
+    detail_asset_names = detail_assets.str.split(':').str[-1].str.lower()
+    mask = detail_assets.isin(current_assets) | detail_asset_names.isin(current_asset_names)
+    return detail_df.loc[mask].copy()
+
+
+def _drop_excluded_assets(price_df):
+    if price_df is None or price_df.empty:
+        return price_df
+    keep_cols = [
+        c for c in price_df.columns
+        if not any(keyword in str(c) for keyword in EXCLUDED_ASSET_KEYWORDS)
+    ]
+    return price_df.loc[:, keep_cols].copy()
+
+
+def _drop_excluded_from_detail(detail_df):
+    if detail_df is None or detail_df.empty:
+        return detail_df
+    asset_col = next((c for c in ('sector', 'asset_code', 'asset_name') if c in detail_df.columns), None)
+    if asset_col is None:
+        return detail_df
+    asset_text = detail_df[asset_col].astype(str)
+    mask = ~asset_text.apply(lambda x: any(keyword in x for keyword in EXCLUDED_ASSET_KEYWORDS))
+    return detail_df.loc[mask].copy()
+
+
+@st.cache_data(ttl=3600)  # 数据文件指纹变化时会立即刷新缓存
+def get_analysis_results(data_signature):
     analyzer = GXPitMomActions(data_dir='./data/')
     index_data = analyzer.dp.get_wide_table('000985_prices.xlsx')
     zx_yj_prices = analyzer.dp.get_wide_table('ZX_YJHY.xlsx')
     zx_ej_prices = analyzer.dp.get_wide_table('ZX_EJHY.xlsx')
+    zx_ej_prices = _drop_excluded_assets(zx_ej_prices)
     
     sig_breakout = analyzer.gx_pit_breakout(index_data)
     sig_rebound = analyzer.gx_pit_rebound(index_data)
@@ -59,10 +120,16 @@ def get_analysis_results():
         '中信一级行业': _load_group_detail('./data/group_assignment_details_zx_yjhy.csv'),
         '中信二级行业': _load_group_detail('./data/group_assignment_details_zx_ejhy.csv'),
     }
+    hist_detail = {
+        '中信一级行业': _filter_group_detail_to_current_universe(hist_detail['中信一级行业'], zx_yj_prices),
+        '中信二级行业': _drop_excluded_from_detail(
+            _filter_group_detail_to_current_universe(hist_detail['中信二级行业'], zx_ej_prices)
+        ),
+    }
     return results, index_data, zx_yj_prices, zx_ej_prices, hist_detail
 
 try:
-    results, index_data, zx_yj_prices, zx_ej_prices, hist_detail = get_analysis_results()
+    results, index_data, zx_yj_prices, zx_ej_prices, hist_detail = get_analysis_results(get_data_signature())
     
     if index_data.empty:
         st.warning("📊 暂无中证全指数据。")
