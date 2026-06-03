@@ -213,7 +213,8 @@ try:
 
     # --- Header ---
     bench_code = "000985.SH"
-    st.markdown(f"### {_LABEL_BENCHMARK} <span style='font-size:0.6em; color:#8b949e'>{bench_code} | {latest_date_str}</span>", unsafe_allow_html=True)
+    st.markdown("### 股旭低位动量策略监控")
+    st.caption("基于中证全指择时信号与行业相对动量，跟踪一级、二级行业板块的轮动机会。")
 
     current_has_signal = False
     current_signal_type = "今日无信号"
