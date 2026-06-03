@@ -200,14 +200,15 @@ try:
     chart_data = chart_data.tail(120)
     chart_x = chart_data.index.strftime('%Y-%m-%d')
     volume_col = 'volume' if 'volume' in chart_data.columns else 'amt'
-    volume_colors = np.where(chart_data['close'] >= chart_data['open'], '#00c78a', '#ff5a1f')
+    prev_close = chart_data['close'].shift(1).fillna(chart_data['open'])
+    volume_colors = np.where(chart_data['close'] >= prev_close, '#ff5722', '#00c875')
 
     fig_k = make_subplots(
         rows=2,
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.035,
-        row_heights=[0.78, 0.22],
+        row_heights=[0.82, 0.18],
     )
     fig_k.add_trace(go.Candlestick(
         x=chart_x,
@@ -215,10 +216,10 @@ try:
         high=chart_data['high'],
         low=chart_data['low'],
         close=chart_data['close'],
-        increasing_line_color='#00c78a',
-        increasing_fillcolor='#00c78a',
-        decreasing_line_color='#ff5a1f',
-        decreasing_fillcolor='#111111',
+        increasing_line_color='#ff5722',
+        increasing_fillcolor='rgba(0,0,0,0)',
+        decreasing_line_color='#00c875',
+        decreasing_fillcolor='#00c875',
         whiskerwidth=0.55,
         name='K线',
     ), row=1, col=1)
@@ -248,8 +249,8 @@ try:
         name='成交量',
     ), row=2, col=1)
     fig_k.update_layout(
-        height=520,
-        margin=dict(l=4, r=4, t=8, b=0),
+        height=560,
+        margin=dict(l=4, r=4, t=8, b=4),
         template="plotly_dark",
         showlegend=False,
         hovermode='x unified',
@@ -264,7 +265,7 @@ try:
         type='category',
         showgrid=False,
         showticklabels=False,
-        linecolor='#242424',
+        linecolor='#2c2c2c',
         zeroline=False,
         rangeslider_visible=False,
         row=1,
@@ -273,31 +274,23 @@ try:
     fig_k.update_xaxes(
         type='category',
         showgrid=False,
-        nticks=8,
+        nticks=7,
         tickangle=0,
-        linecolor='#242424',
+        linecolor='#2c2c2c',
         zeroline=False,
         row=2,
         col=1,
     )
-    fig_k.update_yaxes(
-        showgrid=True,
-        gridcolor='#242424',
-        zeroline=False,
-        showticklabels=False,
-        fixedrange=True,
-        row=1,
-        col=1,
-    )
-    fig_k.update_yaxes(
-        showgrid=True,
-        gridcolor='#242424',
-        zeroline=False,
-        showticklabels=False,
-        fixedrange=True,
-        row=2,
-        col=1,
-    )
+    for row_idx in [1, 2]:
+        fig_k.update_yaxes(
+            showgrid=True,
+            gridcolor='#2c2c2c',
+            zeroline=False,
+            showticklabels=False,
+            fixedrange=True,
+            row=row_idx,
+            col=1,
+        )
     st.plotly_chart(fig_k, use_container_width=True)
 
     # --- Metrics Section ---
