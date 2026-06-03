@@ -41,12 +41,16 @@ DATA_FILES = (
 
 EXCLUDED_ASSET_KEYWORDS = ('资产管理',)
 
-# 数据源检测: 通过 Excel 第一行识别数据来源 (Wind CITIC vs 通达信 TDX)
+# 数据源检测: 通过 Excel 第一行识别数据来源 (Wind CITIC vs 通达信/东方财富/腾讯财经)
 def _detect_data_source(file_path: str) -> str:
-    """检测数据源类型: 'citic' (Wind 中信行业) 或 'tdx' (通达信板块)."""
+    """检测数据源类型: 'citic', 'tdx', 'eastmoney' 或 'tencent'."""
     try:
-        df_raw = pd.read_excel(file_path, nrows=2, header=None)
+        df_raw = pd.read_excel(file_path, nrows=5, header=None)
         first_val = str(df_raw.iloc[0, 0]).strip()
+        if '腾讯财经' in first_val or 'Tencent' in first_val:
+            return 'tencent'
+        if '东方财富' in first_val or 'Eastmoney' in first_val:
+            return 'eastmoney'
         if '通达信' in first_val or 'TDX' in first_val or 'mootdx' in first_val:
             return 'tdx'
         if 'Wind' in first_val or '中信' in first_val or 'Wind' in str(df_raw.iloc[4, 0]) if len(df_raw) > 4 else False:
@@ -54,6 +58,10 @@ def _detect_data_source(file_path: str) -> str:
         # 检查表的来源行 (第 5 行, 0-indexed=4)
         if len(df_raw) > 4:
             source_row = str(df_raw.iloc[4, 0]).strip()
+            if '腾讯财经' in source_row or 'Tencent' in source_row:
+                return 'tencent'
+            if '东方财富' in source_row or 'Eastmoney' in source_row:
+                return 'eastmoney'
             if '通达信' in source_row or 'mootdx' in source_row:
                 return 'tdx'
             if '中信' in source_row:
@@ -69,7 +77,7 @@ _DATA_SOURCE_BENCH = _detect_data_source('./data/000985_prices.xlsx')
 
 # 根据数据源动态设置标签
 if _DATA_SOURCE_YJHY == 'tdx':
-    _LABEL_BENCHMARK = '沪深300' if _DATA_SOURCE_BENCH == 'tdx' else '中证全指'
+    _LABEL_BENCHMARK = '中证全指'
     _LABEL_L1 = '行业板块 (一级)'
     _LABEL_L2 = '行业板块 (二级)'
     _LABEL_L1_SHORT = '一级板块'
@@ -181,7 +189,7 @@ try:
     price_pct = (index_data['close'].pct_change().iloc[-1] * 100)
 
     # --- Header ---
-    bench_code = "000985.SH" if _DATA_SOURCE_BENCH == "citic" else "000300.SH"
+    bench_code = "000985.SH"
     st.markdown(f"### {_LABEL_BENCHMARK} <span style='font-size:0.6em; color:#8b949e'>{bench_code} | {latest_date_str}</span>", unsafe_allow_html=True)
 
     # --- Task 3: 40D K-Line Chart (Enhanced) ---

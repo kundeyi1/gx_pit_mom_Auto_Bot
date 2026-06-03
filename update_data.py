@@ -9,7 +9,7 @@ update_data.py — Auto-update pipeline for gx_pit_mom_Auto_Bot.
 工作流:
   ┌─────────────────────────────────────────────────────────────┐
   │  mootdx (TDX 通达信 TCP 7709)                               │
-  │  ├── 000300  沪深300 (基准指数代理)                          │
+  │  ├── 000985.SH  中证全指 (东方财富优先, 腾讯财经兜底)        │
   │  ├── 8803xx  行业板块指数 (~46 个一级板块)                   │
   │  └── 8804xx + 8805xx  概念板块指数 (~80+ 个二级板块)        │
   └──────────────────┬──────────────────────────────────────────┘
@@ -34,13 +34,16 @@ update_data.py — Auto-update pipeline for gx_pit_mom_Auto_Bot.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+import requests
 
 try:
     from src.mootdx_fetcher import MootdxFetcher
@@ -52,8 +55,19 @@ except ImportError:
 _TARGET_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 # ── 基准指数 ──────────────────────────────────────────────────────────
-_TDX_BENCHMARK_CODE = "000300"  # 沪深300 (代理 000985 中证全指)
-_TDX_BENCHMARK_NAME = "沪深300"
+_BENCHMARK_CODE = "000985"
+_BENCHMARK_SECID = "1.000985"  # 东方财富: 1=上交所, 000985=中证全指
+_BENCHMARK_NAME = "中证全指"
+_EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+_EASTMONEY_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36"
+    ),
+    "Referer": "https://quote.eastmoney.com/",
+    "Accept": "application/json,text/plain,*/*",
+}
+_TENCENT_KLINE_URL = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
 
 # ── TDX 板块指数代码 (8803xx 基础行业 + 8804xx/8805xx 扩展概念) ────────
 # 名称映射: 代码 → 中文名称
@@ -355,6 +369,8 @@ def _write_excel_wide(
     path: Path,
     index_label: str = "Date",
     col0_label: str = "通达信",
+    source_label: str = "通达信/mootdx",
+    id_prefix: str = "TDX",
 ) -> None:
     """将宽表 DataFrame 写入 Excel, 格式兼容 WindLocalProvider.get_wide_table().
 
@@ -362,8 +378,8 @@ def _write_excel_wide(
       Row 0: col0_label + 各列名 (如 '通达信', '煤炭', '石油', ...)
       Row 1: '指数名称' + 各列 '日' (频率)
       Row 2: '频率' + 各列 '点' (单位)
-      Row 3: '指数ID' + 各列 'TDX' (来源标识)
-      Row 4: '来源' + 各列 '通达信/mootdx'
+      Row 3: '指数ID' + 各列 id_prefix (来源标识)
+      Row 4: '来源' + 各列 source_label
       Row 5 (header): index_label + 各列名 (如 'Date', '煤炭', '石油', ...)
       Row 6+: 数据行 (日期 + OHLCV)
     """
@@ -378,8 +394,8 @@ def _write_excel_wide(
     rows.append([col0_label] + list(df.columns))               # Row 0
     rows.append(["指数名称"] + ["日"] * n_cols)                  # Row 1
     rows.append(["频率"] + ["点"] * n_cols)                      # Row 2
-    rows.append(["指数ID"] + [f"TDX{i:04d}" for i in range(1, n_cols + 1)])  # Row 3
-    rows.append(["来源"] + ["通达信/mootdx"] * n_cols)           # Row 4
+    rows.append(["指数ID"] + [f"{id_prefix}{i:04d}" for i in range(1, n_cols + 1)])  # Row 3
+    rows.append(["来源"] + [source_label] * n_cols)              # Row 4
     rows.append([index_label] + list(df.columns))               # Row 5
 
     # 数据行
@@ -470,8 +486,153 @@ def _fetch_tdx_close_table(
     return result
 
 
-def fetch_benchmark_data(fetcher) -> pd.DataFrame:
-    """拉取基准指数 (000300 沪深300) 数据.
+def _request_eastmoney_klines(beg: str, end: str, max_retries: int = 4) -> list[str]:
+    """从东方财富拉取中证全指日线 kline 字符串列表."""
+    params = {
+        "secid": _BENCHMARK_SECID,
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": "101",  # 日线
+        "fqt": "0",    # 指数不复权
+        "beg": beg,
+        "end": end,
+    }
+
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(
+                _EASTMONEY_KLINE_URL,
+                params=params,
+                headers=_EASTMONEY_HEADERS,
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            data = payload.get("data") or {}
+            name = str(data.get("name") or "")
+            code = str(data.get("code") or "")
+            klines = data.get("klines") or []
+            if code != _BENCHMARK_CODE or _BENCHMARK_NAME not in name:
+                raise ValueError(f"东方财富返回代码/名称异常: code={code}, name={name}")
+            return klines
+        except Exception as exc:
+            last_error = exc
+            time.sleep(1.0 + attempt * 1.5)
+
+    raise RuntimeError(f"东方财富中证全指请求失败: {last_error}") from last_error
+
+
+def _parse_eastmoney_klines(klines: list[str]) -> pd.DataFrame:
+    """解析东方财富 kline 字符串为项目标准 OHLCV DataFrame."""
+    if not klines:
+        return pd.DataFrame()
+
+    rows = []
+    for item in klines:
+        parts = str(item).split(",")
+        if len(parts) < 7:
+            continue
+        rows.append({
+            "date": parts[0],
+            "open": parts[1],
+            "close": parts[2],
+            "high": parts[3],
+            "low": parts[4],
+            "volume": parts[5],
+            "amount": parts[6],
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    for col in ["open", "high", "low", "close", "volume", "amount"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["date", "open", "high", "low", "close"])
+    df["_d"] = df["date"].dt.normalize()
+    result = df.set_index("_d")[["open", "high", "low", "close", "volume", "amount"]]
+    return result[~result.index.duplicated(keep="last")].sort_index()
+
+
+def _request_tencent_klines(start_year: int, end_year: int, max_retries: int = 3) -> list[list]:
+    """从腾讯财经拉取中证全指日线列表，作为东方财富不可用时的兜底."""
+    all_rows: list[list] = []
+    last_error: Exception | None = None
+
+    for year in range(start_year, end_year + 1):
+        params = {
+            "_var": "kline_dayqfq",
+            "param": f"sh{_BENCHMARK_CODE},day,{year}-01-01,{year + 1}-12-31,640,qfq",
+            "r": "0.8205512681390605",
+        }
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(
+                    _TENCENT_KLINE_URL,
+                    params=params,
+                    headers=_EASTMONEY_HEADERS,
+                    timeout=20,
+                )
+                response.raise_for_status()
+                text = response.text
+                json_start = text.find("={")
+                payload_text = text[json_start + 1:] if json_start >= 0 else text
+                payload = json.loads(payload_text)
+                data = payload.get("data", {}).get(f"sh{_BENCHMARK_CODE}", {})
+                rows = data.get("day") or data.get("qfqday") or []
+                all_rows.extend(rows)
+                break
+            except Exception as exc:
+                last_error = exc
+                time.sleep(1.0 + attempt)
+        else:
+            raise RuntimeError(f"腾讯财经中证全指请求失败: {last_error}") from last_error
+
+    return all_rows
+
+
+def _parse_tencent_klines(rows: list[list], start_date: str, end_date: str) -> pd.DataFrame:
+    """解析腾讯财经 kline 列表为项目标准 OHLCV DataFrame."""
+    if not rows:
+        return pd.DataFrame()
+
+    parsed = []
+    for row in rows:
+        if len(row) < 6:
+            continue
+        parsed.append({
+            "date": row[0],
+            "open": row[1],
+            "close": row[2],
+            "high": row[3],
+            "low": row[4],
+            "volume": row[5],
+            "amount": np.nan,
+        })
+
+    df = pd.DataFrame(parsed)
+    if df.empty:
+        return df
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    for col in ["open", "high", "low", "close", "volume", "amount"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    start_ts = pd.to_datetime(start_date)
+    end_ts = pd.to_datetime(end_date)
+    df = df[(df["date"] >= start_ts) & (df["date"] <= end_ts)]
+    df = df.dropna(subset=["date", "open", "high", "low", "close"])
+    df["_d"] = df["date"].dt.normalize()
+    result = df.set_index("_d")[["open", "high", "low", "close", "volume", "amount"]]
+    return result[~result.index.duplicated(keep="last")].sort_index()
+
+
+def fetch_benchmark_data(fetcher=None) -> pd.DataFrame:
+    """拉取基准指数 (000985.SH 中证全指) 数据.
 
     Returns
     -------
@@ -479,21 +640,37 @@ def fetch_benchmark_data(fetcher) -> pd.DataFrame:
         OHLCV 数据, 以 date 为 index.
     """
     _log("=" * 60)
-    _log(f"[TDX] 拉取基准指数: {_TDX_BENCHMARK_NAME} ({_TDX_BENCHMARK_CODE})")
+    _log(f"[Eastmoney] 拉取基准指数: {_BENCHMARK_NAME} ({_BENCHMARK_CODE}.SH)")
 
     try:
-        df = fetcher.fetch_index_daily_full(_TDX_BENCHMARK_CODE)
-        if df is None or df.empty:
+        klines = _request_eastmoney_klines("20170101", "20500101")
+        result = _parse_eastmoney_klines(klines)
+        if result.empty:
             _log("  [FAIL] 基准指数返回空数据")
             return pd.DataFrame()
 
-        df["_d"] = pd.to_datetime(df["date"]).dt.normalize()
-        result = df.set_index("_d")[["open", "high", "low", "close", "volume", "amount"]]
-        result = result[~result.index.duplicated(keep="last")].sort_index()
+        result.attrs["source_label"] = "东方财富"
+        result.attrs["id_prefix"] = "EM"
         _log(f"  ✓ {len(result)} 行, {result.index[0].date()} ~ {result.index[-1].date()}")
         return result
     except Exception as e:
-        _log(f"  [FAIL] 基准指数拉取失败: {e}")
+        _log(f"  [WARN] 东方财富基准指数拉取失败: {e}")
+
+    _log(f"[Tencent] 兜底拉取基准指数: {_BENCHMARK_NAME} ({_BENCHMARK_CODE}.SH)")
+    try:
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        rows = _request_tencent_klines(2017, datetime.now().year)
+        result = _parse_tencent_klines(rows, "2017-01-01", end_date)
+        if result.empty:
+            _log("  [FAIL] 腾讯财经基准指数返回空数据")
+            return pd.DataFrame()
+
+        result.attrs["source_label"] = "腾讯财经"
+        result.attrs["id_prefix"] = "TX"
+        _log(f"  ✓ {len(result)} 行, {result.index[0].date()} ~ {result.index[-1].date()}")
+        return result
+    except Exception as e:
+        _log(f"  [FAIL] 腾讯财经基准指数拉取失败: {e}")
         return pd.DataFrame()
 
 
@@ -549,7 +726,14 @@ def update_all_data(fetcher) -> dict[str, bool]:
     bench_df = fetch_benchmark_data(fetcher)
     if not bench_df.empty:
         bench_path = _TARGET_DATA_DIR / "000985_prices.xlsx"
-        _write_excel_wide(bench_df, bench_path, index_label="Date", col0_label="通达信")
+        _write_excel_wide(
+            bench_df,
+            bench_path,
+            index_label="Date",
+            col0_label=bench_df.attrs.get("source_label", "中证全指"),
+            source_label=bench_df.attrs.get("source_label", "中证全指"),
+            id_prefix=bench_df.attrs.get("id_prefix", "IDX"),
+        )
         results["000985_prices.xlsx"] = True
     else:
         _log("  [WARN] 基准指数数据为空, 跳过")
@@ -707,23 +891,16 @@ def check_for_updates() -> bool:
     bool
         True 如果有新数据.
     """
-    if MootdxFetcher is None:
-        _log("  [WARN] MootdxFetcher 不可用")
-        return False
-
     try:
-        fetcher = MootdxFetcher()
-        df = fetcher.fetch_index_daily(_TDX_BENCHMARK_CODE, offset=5)
+        df = fetch_benchmark_data()
         if df is None or df.empty:
-            fetcher.close()
             return False
 
-        latest_tdx_date = pd.to_datetime(df["date"].iloc[-1]).date()
+        latest_index_date = pd.to_datetime(df.index[-1]).date()
 
         target_path = _TARGET_DATA_DIR / "000985_prices.xlsx"
         if not target_path.exists():
             _log(f"  目标文件不存在: 000985_prices.xlsx")
-            fetcher.close()
             return True
 
         # 读取已有数据的最后日期
@@ -732,13 +909,11 @@ def check_for_updates() -> bool:
             dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce").dropna()
             if len(dates) > 0:
                 last_date = dates.iloc[-1].date()
-                if latest_tdx_date > last_date:
-                    _log(f"  有新交易日: {latest_tdx_date} > {last_date}")
-                    fetcher.close()
+                if latest_index_date > last_date:
+                    _log(f"  有新交易日: {latest_index_date} > {last_date}")
                     return True
 
         _log("  无新数据")
-        fetcher.close()
         return False
     except Exception as e:
         _log(f"  [WARN] 检查更新失败: {e}")
