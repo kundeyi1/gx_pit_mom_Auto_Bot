@@ -41,6 +41,46 @@ DATA_FILES = (
 
 EXCLUDED_ASSET_KEYWORDS = ('资产管理',)
 
+# 数据源检测: 通过 Excel 第一行识别数据来源 (Wind CITIC vs 通达信 TDX)
+def _detect_data_source(file_path: str) -> str:
+    """检测数据源类型: 'citic' (Wind 中信行业) 或 'tdx' (通达信板块)."""
+    try:
+        df_raw = pd.read_excel(file_path, nrows=2, header=None)
+        first_val = str(df_raw.iloc[0, 0]).strip()
+        if '通达信' in first_val or 'TDX' in first_val or 'mootdx' in first_val:
+            return 'tdx'
+        if 'Wind' in first_val or '中信' in first_val or 'Wind' in str(df_raw.iloc[4, 0]) if len(df_raw) > 4 else False:
+            return 'citic'
+        # 检查表的来源行 (第 5 行, 0-indexed=4)
+        if len(df_raw) > 4:
+            source_row = str(df_raw.iloc[4, 0]).strip()
+            if '通达信' in source_row or 'mootdx' in source_row:
+                return 'tdx'
+            if '中信' in source_row:
+                return 'citic'
+    except Exception:
+        pass
+    return 'citic'  # 默认假设为 CITIC
+
+
+# 在模块加载时检测数据源
+_DATA_SOURCE_YJHY = _detect_data_source('./data/ZX_YJHY.xlsx')
+_DATA_SOURCE_BENCH = _detect_data_source('./data/000985_prices.xlsx')
+
+# 根据数据源动态设置标签
+if _DATA_SOURCE_YJHY == 'tdx':
+    _LABEL_BENCHMARK = '沪深300' if _DATA_SOURCE_BENCH == 'tdx' else '中证全指'
+    _LABEL_L1 = '行业板块 (一级)'
+    _LABEL_L2 = '行业板块 (二级)'
+    _LABEL_L1_SHORT = '一级板块'
+    _LABEL_L2_SHORT = '二级板块'
+else:
+    _LABEL_BENCHMARK = '中证全指'
+    _LABEL_L1 = '中信一级行业'
+    _LABEL_L2 = '中信二级行业'
+    _LABEL_L1_SHORT = '一级行业'
+    _LABEL_L2_SHORT = '二级行业'
+
 
 def get_data_signature(data_dir='./data/'):
     """Return a lightweight fingerprint so Streamlit cache refreshes after data updates."""
@@ -101,11 +141,11 @@ def get_analysis_results(data_signature):
     sig_breakout = analyzer.gx_pit_breakout(index_data)
     sig_rebound = analyzer.gx_pit_rebound(index_data)
     sig_rotation = analyzer.gx_pit_rotation(index_data, zx_yj_prices)
-    
+
     signals_dict = {'breakout': sig_breakout, 'rebound': sig_rebound, 'rotation': sig_rotation}
     results = {
-        '中信一级行业': analyzer.calculate_fused_signals(zx_yj_prices, signals_dict),
-        '中信二级行业': analyzer.calculate_fused_signals(zx_ej_prices, signals_dict)
+        _LABEL_L1: analyzer.calculate_fused_signals(zx_yj_prices, signals_dict),
+        _LABEL_L2: analyzer.calculate_fused_signals(zx_ej_prices, signals_dict)
     }
 
     # 读取历史分组业绩明细 CSV
@@ -117,13 +157,13 @@ def get_analysis_results(data_signature):
             return pd.DataFrame()
 
     hist_detail = {
-        '中信一级行业': _load_group_detail('./data/group_assignment_details_zx_yjhy.csv'),
-        '中信二级行业': _load_group_detail('./data/group_assignment_details_zx_ejhy.csv'),
+        _LABEL_L1: _load_group_detail('./data/group_assignment_details_zx_yjhy.csv'),
+        _LABEL_L2: _load_group_detail('./data/group_assignment_details_zx_ejhy.csv'),
     }
     hist_detail = {
-        '中信一级行业': _filter_group_detail_to_current_universe(hist_detail['中信一级行业'], zx_yj_prices),
-        '中信二级行业': _drop_excluded_from_detail(
-            _filter_group_detail_to_current_universe(hist_detail['中信二级行业'], zx_ej_prices)
+        _LABEL_L1: _filter_group_detail_to_current_universe(hist_detail[_LABEL_L1], zx_yj_prices),
+        _LABEL_L2: _drop_excluded_from_detail(
+            _filter_group_detail_to_current_universe(hist_detail[_LABEL_L2], zx_ej_prices)
         ),
     }
     return results, index_data, zx_yj_prices, zx_ej_prices, hist_detail
@@ -132,7 +172,7 @@ try:
     results, index_data, zx_yj_prices, zx_ej_prices, hist_detail = get_analysis_results(get_data_signature())
     
     if index_data.empty:
-        st.warning("📊 暂无中证全指数据。")
+        st.warning(f"📊 暂无{_LABEL_BENCHMARK}数据。")
         st.stop()
         
     latest_date_dt = index_data.index[-1]
@@ -141,7 +181,8 @@ try:
     price_pct = (index_data['close'].pct_change().iloc[-1] * 100)
 
     # --- Header ---
-    st.markdown(f"### 中证全指 <span style='font-size:0.6em; color:#8b949e'>000985.SH | {latest_date_str}</span>", unsafe_allow_html=True)
+    bench_code = "000985.SH" if _DATA_SOURCE_BENCH == "citic" else "000300.SH"
+    st.markdown(f"### {_LABEL_BENCHMARK} <span style='font-size:0.6em; color:#8b949e'>{bench_code} | {latest_date_str}</span>", unsafe_allow_html=True)
 
     # --- Task 3: 40D K-Line Chart (Enhanced) ---
     chart_data = index_data.tail(40)
@@ -178,15 +219,16 @@ try:
     # --- Metrics Section ---
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(f'<div class="metric-card"><div class="column-label">最新价格</div><div class="value-label" style="color:{"#3fb950" if price_pct < 0 else "#f85149"}">{current_price:.2f}</div></div>', unsafe_allow_html=True)
+        price_color = "#3fb950" if price_pct < 0 else "#f85149"
+        st.markdown(f'<div class="metric-card"><div class="column-label">最新价格</div><div class="value-label" style="color:{price_color}">{current_price:.2f}</div></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="metric-card"><div class="column-label">日内涨跌指数</div><div class="value-label" style="color:{"#3fb950" if price_pct < 0 else "#f85149"}">{price_pct:+.2f}%</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="column-label">日内涨跌指数</div><div class="value-label" style="color:{price_color}">{price_pct:+.2f}%</div></div>', unsafe_allow_html=True)
 
     # --- Task 4: 今日信号独立模块 ---
     st.markdown("### 🔔 今日策略信号")
     current_has_signal = False
     current_signal_type = "今日无信号"
-    for sector in ['中信一级行业', '中信二级行业']:
+    for sector in [_LABEL_L1, _LABEL_L2]:
         if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
             current_has_signal = True
             current_signal_type = f"触发: {results[sector][-1]['type']}"
@@ -201,7 +243,7 @@ try:
     st.markdown("### 📊 当前、历史信号结果统计")
     
     overall_last_sig_date, overall_last_sig_type = None, "N/A"
-    for s in ['中信一级行业', '中信二级行业']:
+    for s in [_LABEL_L1, _LABEL_L2]:
         valid_res = [r for r in results[s] if r['date'] <= latest_date_dt]
         if valid_res:
             overall_last_sig_date, overall_last_sig_type = valid_res[-1]['date'], valid_res[-1]['type']
@@ -222,10 +264,11 @@ try:
         if len(idx_after_sig) > 1:
             i_target_idx = min(20, len(idx_after_sig) - 1)
             idx_ret = (idx_after_sig['close'].iloc[i_target_idx] / idx_after_sig['close'].iloc[0] - 1) * 100
-            st.markdown(f'<div style="text-align: right; font-size: 0.8em; margin-bottom: 15px; color: #8b949e; padding-right:10px;">同期中证全指表现: <span style="color: {"#f85149" if idx_ret>=0 else "#3fb950"}; font-weight: bold;">{idx_ret:+.2f}%</span> (20D或至今)</div>', unsafe_allow_html=True)
+            bench_color = "#f85149" if idx_ret >= 0 else "#3fb950"
+            st.markdown(f'<div style="text-align: right; font-size: 0.8em; margin-bottom: 15px; color: #8b949e; padding-right:10px;">同期{_LABEL_BENCHMARK}表现: <span style="color: {bench_color}; font-weight: bold;">{idx_ret:+.2f}%</span> (20D或至今)</div>', unsafe_allow_html=True)
 
     h_col1, h_col2 = st.columns(2)
-    sector_price_map = {'中信一级行业': zx_yj_prices, '中信二级行业': zx_ej_prices}
+    sector_price_map = {_LABEL_L1: zx_yj_prices, _LABEL_L2: zx_ej_prices}
 
     def _compute_hist_portfolio_stats(detail_df):
         """基于 CSV 历史分组明细，按 date 聚合多头/多空 Top5/Top10 的期收益率。
@@ -260,9 +303,9 @@ try:
     def _color(v):
         return '#f85149' if v >= 0 else '#3fb950'
 
-    for i, sector in enumerate(['中信一级行业', '中信二级行业']):
+    for i, sector in enumerate([_LABEL_L1, _LABEL_L2]):
         with [h_col1, h_col2][i]:
-            top_n = 5 if sector == '中信一级行业' else 10  # 一级→T5；二级→T10
+            top_n = 5 if sector == _LABEL_L1 else 10  # 一级→T5；二级→T10
             long_col = f'long{top_n}'
             long_ex_col = f'long{top_n}_ex'
             ls_col = f'ls{top_n}'
@@ -383,11 +426,11 @@ try:
     st.markdown("### 🚀 当天行业涨幅 Top10")
     top_col1, top_col2 = st.columns(2)
     daily_ret_map = {
-        '中信一级行业': zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
-        '中信二级行业': zx_ej_prices.pct_change().iloc[-1] * 100 if len(zx_ej_prices) > 1 else pd.Series(dtype=float),
+        _LABEL_L1: zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
+        _LABEL_L2: zx_ej_prices.pct_change().iloc[-1] * 100 if len(zx_ej_prices) > 1 else pd.Series(dtype=float),
     }
 
-    for i, sector in enumerate(['中信一级行业', '中信二级行业']):
+    for i, sector in enumerate([_LABEL_L1, _LABEL_L2]):
         with [top_col1, top_col2][i]:
             sorted_daily_ret = daily_ret_map[sector].dropna().sort_values(ascending=False)
             top10 = sorted_daily_ret.head(10)

@@ -2,41 +2,54 @@ name: Daily Quant Analysis
 
 on:
   schedule:
-    # Runs at 16:30 Beijing Time (GMT+8) every day
-    # UTC 08:30 is Beijing 16:30
+    # 每天北京时间 16:30 (UTC 08:30) 运行
     - cron: '30 8 * * *'
-  push:
-    # Triggered when data files in 'data/' folder are pushed
-    paths:
-      - 'data/**'
   workflow_dispatch:
-    # Manual trigger for testing
+    # 手动触发 (用于测试)
+
+permissions:
+  contents: write
 
 jobs:
   run-analysis:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy streamlit plotly openpyxl
+          pip install -r requirements.txt
 
-      - name: Run Streamlit Local Test (No Headless)
+      - name: Update data from mootdx
         run: |
-          # 验证环境是否能运行 app.py
-          echo "Environment Ready for Streamlit."
+          echo "=== gx_pit_mom_Auto_Bot 每日数据更新 ==="
+          echo "运行时间: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          python update_data.py --daily
+          echo "=== 数据更新完成 ==="
 
-      - name: Update Daily Report Data
+      - name: Verify Streamlit environment
         run: |
-          # 运行原本的分析逻辑（可选，如果需要生成静态快照）
-          python main.py
+          # 验证 Streamlit 是否能正常导入
+          python -c "import streamlit; print(f'Streamlit {streamlit.__version__} ready')"
 
+      - name: Commit updated data (if changes)
+        # 自动提交并推送数据产物, 触发 Streamlit Cloud 重新部署
+        run: |
+          git config user.name "Quant Auto Bot"
+          git config user.email "bot@quant.dev"
+          git add data/*.xlsx data/group_assignment_details_*.csv data/.last_update 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "Auto: update mootdx data"
+            git push
+            echo "Data updated and pushed."
+          fi
