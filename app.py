@@ -26,6 +26,28 @@ st.markdown("""
         padding: 20px;
         margin-bottom: 20px;
     }
+    .market-summary-panel {
+        background-color: #141414;
+        border: 1px solid #2c2c2c;
+        border-radius: 8px;
+        padding: 18px 18px 16px 18px;
+        min-height: 560px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 16px;
+    }
+    .market-summary-title { color: #c9d1d9; font-size: 1.15rem; font-weight: 700; }
+    .market-summary-code { color: #8b949e; font-size: 0.82rem; margin-top: 4px; }
+    .market-stat {
+        border-top: 1px solid #2c2c2c;
+        padding-top: 16px;
+    }
+    .market-signal {
+        border-top: 1px solid #2c2c2c;
+        padding-top: 16px;
+    }
+    .signal-value { font-size: 1.15rem; font-weight: 700; line-height: 1.35; }
     .column-label { color: #8b949e; font-size: 0.9em; }
     .value-label { font-size: 1.5em; font-weight: bold; }
 </style>
@@ -193,6 +215,13 @@ try:
     bench_code = "000985.SH"
     st.markdown(f"### {_LABEL_BENCHMARK} <span style='font-size:0.6em; color:#8b949e'>{bench_code} | {latest_date_str}</span>", unsafe_allow_html=True)
 
+    current_has_signal = False
+    current_signal_type = "今日无信号"
+    for sector in [_LABEL_L1, _LABEL_L2]:
+        if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
+            current_has_signal = True
+            current_signal_type = f"触发: {results[sector][-1]['type']}"
+
     # --- Benchmark K-Line Chart ---
     chart_data = index_data.copy()
     chart_data['ma5'] = chart_data['close'].rolling(5).mean()
@@ -291,30 +320,33 @@ try:
             row=row_idx,
             col=1,
         )
-    st.plotly_chart(fig_k, use_container_width=True)
 
-    # --- Metrics Section ---
-    col1, col2 = st.columns(2)
-    with col1:
-        price_color = "#3fb950" if price_pct < 0 else "#f85149"
-        st.markdown(f'<div class="metric-card"><div class="column-label">最新价格</div><div class="value-label" style="color:{price_color}">{current_price:.2f}</div></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'<div class="metric-card"><div class="column-label">日内涨跌指数</div><div class="value-label" style="color:{price_color}">{price_pct:+.2f}%</div></div>', unsafe_allow_html=True)
-
-    # --- Task 4: 今日信号独立模块 ---
-    st.markdown("### 🔔 今日策略信号")
-    current_has_signal = False
-    current_signal_type = "今日无信号"
-    for sector in [_LABEL_L1, _LABEL_L2]:
-        if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
-            current_has_signal = True
-            current_signal_type = f"触发: {results[sector][-1]['type']}"
-    
-    st.markdown(f"""
-    <div class="metric-card" style="border-left: 5px solid {'#58a6ff' if current_has_signal else '#30363d'}; text-align: center;">
-        <div class="value-label" style="color: {'#58a6ff' if current_has_signal else '#8b949e'}">{current_signal_type}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    price_color = "#3fb950" if price_pct < 0 else "#f85149"
+    signal_color = "#58a6ff" if current_has_signal else "#8b949e"
+    market_col, chart_col = st.columns([1, 2.8], gap="large")
+    with market_col:
+        st.markdown(f"""
+        <div class="market-summary-panel">
+            <div>
+                <div class="market-summary-title">{_LABEL_BENCHMARK}</div>
+                <div class="market-summary-code">{bench_code} · {latest_date_str}</div>
+            </div>
+            <div class="market-stat">
+                <div class="column-label">最新价格</div>
+                <div class="value-label" style="color:{price_color}; font-size:2rem;">{current_price:.2f}</div>
+            </div>
+            <div class="market-stat">
+                <div class="column-label">当日涨跌幅</div>
+                <div class="value-label" style="color:{price_color}; font-size:2rem;">{price_pct:+.2f}%</div>
+            </div>
+            <div class="market-signal">
+                <div class="column-label">今日信号</div>
+                <div class="signal-value" style="color:{signal_color};">{current_signal_type}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with chart_col:
+        st.plotly_chart(fig_k, use_container_width=True)
 
     # --- Task 1 & 2: History Trace with Benchmarking ---
     st.markdown("### 📊 当前、历史信号结果统计")
