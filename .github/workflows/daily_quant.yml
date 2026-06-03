@@ -28,11 +28,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Update data from mootdx
+      - name: Update data (Tushare CITIC + benchmark)
+        env:
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: |
           echo "=== gx_pit_mom_Auto_Bot 每日数据更新 ==="
           echo "运行时间: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          python update_data.py --daily
+          python update_data.py
           echo "=== 数据更新完成 ==="
 
       - name: Verify Streamlit environment
@@ -49,7 +51,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No data changes to commit."
           else
-            git commit -m "Auto: update mootdx data"
+            git commit -m "Auto: update Tushare CITIC data"
             git push
             echo "Data updated and pushed."
           fi

@@ -3,5 +3,5 @@ pandas
 numpy
 plotly
 openpyxl
-mootdx
+tushare
 requests
