@@ -213,8 +213,8 @@ try:
 
     # --- Header ---
     bench_code = "000985.SH"
-    st.markdown("### 股旭低位动量策略监控")
-    st.caption("基于中证全指择时信号与行业相对动量，跟踪一级、二级行业板块的轮动机会。")
+    st.markdown("### 时点动量策略")
+    st.caption("基于中证全指择时信号与行业相对动量，跟踪一级、二级行业板块的轮动机会")
 
     current_has_signal = False
     current_signal_type = "今日无信号"
