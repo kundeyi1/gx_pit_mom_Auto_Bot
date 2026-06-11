@@ -265,6 +265,21 @@ def _write_excel_wide(
          f"日期范围 {df.index[0]} ~ {df.index[-1]}")
 
 
+def _load_existing_data(file_name: str) -> pd.DataFrame:
+    """读取已有数据文件，作为在线数据源临时失败时的兜底."""
+    try:
+        from src.data_provider import WindLocalProvider
+
+        df = WindLocalProvider(data_dir=str(_TARGET_DATA_DIR) + "/").get_wide_table(file_name)
+        if not df.empty:
+            _log(f"  [FALLBACK] 使用已有 {file_name}: {len(df)} 行 × {len(df.columns)} 列, "
+                 f"{df.index[0].date()} ~ {df.index[-1].date()}")
+        return df
+    except Exception as exc:
+        _log(f"  [WARN] 读取已有 {file_name} 失败: {exc}")
+        return pd.DataFrame()
+
+
 # ── Tushare CITIC 数据拉取 ────────────────────────────────────────────
 
 def _fetch_citic_index_data(code_map: dict[str, str], label: str) -> pd.DataFrame:
@@ -473,7 +488,8 @@ def update_all_data() -> dict[str, bool]:
         _write_excel_wide(level1_df, _TARGET_DATA_DIR / "ZX_YJHY.xlsx")
         results["ZX_YJHY.xlsx"] = True
     else:
-        results["ZX_YJHY.xlsx"] = False
+        level1_df = _load_existing_data("ZX_YJHY.xlsx")
+        results["ZX_YJHY.xlsx"] = not level1_df.empty
 
     # ── 2. CITIC 二级行业 (Tushare) ──
     time.sleep(2.0)  # Tushare 限速
@@ -482,7 +498,8 @@ def update_all_data() -> dict[str, bool]:
         _write_excel_wide(level2_df, _TARGET_DATA_DIR / "ZX_EJHY.xlsx")
         results["ZX_EJHY.xlsx"] = True
     else:
-        results["ZX_EJHY.xlsx"] = False
+        level2_df = _load_existing_data("ZX_EJHY.xlsx")
+        results["ZX_EJHY.xlsx"] = not level2_df.empty
 
     # ── 3. 基准指数 ──
     bench_df = fetch_benchmark_data()
@@ -490,7 +507,8 @@ def update_all_data() -> dict[str, bool]:
         _write_excel_wide(bench_df, _TARGET_DATA_DIR / "000985_prices.xlsx")
         results["000985_prices.xlsx"] = True
     else:
-        results["000985_prices.xlsx"] = False
+        bench_df = _load_existing_data("000985_prices.xlsx")
+        results["000985_prices.xlsx"] = not bench_df.empty
 
     return results
 
