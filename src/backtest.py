@@ -21,13 +21,6 @@ class BacktestNavResult:
     reason: str = ""
 
 
-@dataclass(frozen=True)
-class PerformanceMetrics:
-    annualized_return: float
-    max_drawdown: float
-    annualized_volatility: float
-
-
 def _normalise_asset_name(value: object) -> str:
     """Match historical CITIC names across Roman-numeral/case variants."""
     name = str(value).split(":")[-1].strip()
@@ -262,28 +255,15 @@ def build_auto_updating_nav(
     return result
 
 
-def calculate_performance_metrics(
-    nav: pd.Series,
-    annualization_days: int = 252,
-) -> PerformanceMetrics:
-    """Calculate active-period annualized return, drawdown and volatility."""
+def calculate_max_drawdown(nav: pd.Series) -> float:
+    """Calculate maximum drawdown, including the initial NAV of 1.0."""
     series = pd.to_numeric(nav, errors="coerce").dropna()
     if series.empty or (series <= 0).any():
-        return PerformanceMetrics(np.nan, np.nan, np.nan)
-
-    daily_returns = series.div(series.shift(1)).sub(1.0)
-    daily_returns.iloc[0] = series.iloc[0] - 1.0
-    annualized_return = series.iloc[-1] ** (annualization_days / len(series)) - 1.0
-    annualized_volatility = daily_returns.std(ddof=1) * np.sqrt(annualization_days)
+        return np.nan
     nav_with_initial = pd.concat(
         [pd.Series([1.0], index=[series.index[0] - pd.Timedelta(days=1)]), series]
     )
-    max_drawdown = (nav_with_initial / nav_with_initial.cummax() - 1.0).min()
-    return PerformanceMetrics(
-        annualized_return=float(annualized_return),
-        max_drawdown=float(max_drawdown),
-        annualized_volatility=float(annualized_volatility),
-    )
+    return float((nav_with_initial / nav_with_initial.cummax() - 1.0).min())
 
 
 def load_backtest_nav(path: str, n_groups: int) -> BacktestNavResult:

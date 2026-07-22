@@ -9,7 +9,7 @@ from src.analysis import GXPitMomActions
 from src.data_provider import WindLocalProvider
 from src.backtest import (
     build_auto_updating_nav,
-    calculate_performance_metrics,
+    calculate_max_drawdown,
     load_backtest_nav,
 )
 
@@ -42,7 +42,6 @@ st.markdown("""
     .backtest-title { color:#c9d1d9; font-size:1rem; font-weight:700; }
     .backtest-mode { color:#8b949e; font-size:0.7rem; white-space:nowrap; }
     .performance-table { width:100%; border-collapse:collapse; margin:0 0 10px 0; }
-    .performance-table caption { color:#6e7681; font-size:0.62rem; text-align:left; padding:0 0 3px 4px; }
     .performance-table th { color:#8b949e; font-size:0.65rem; font-weight:500; padding:3px 4px; text-align:right; border-bottom:1px solid #2c2c2c; }
     .performance-table td { color:#c9d1d9; font-size:0.68rem; padding:3px 4px; text-align:right; border-bottom:1px solid #20242a; }
     .performance-table th:first-child, .performance-table td:first-child { text-align:left; }
@@ -487,12 +486,10 @@ try:
             ("多头", result.long),
             ("多空", result.long_short),
         ):
-            metrics = calculate_performance_metrics(series)
+            max_drawdown = calculate_max_drawdown(series)
             performance_rows.append(
                 f'<tr><td>{label}{portfolio_label}</td>'
-                f'<td>{metrics.annualized_return:+.1%}</td>'
-                f'<td class="drawdown">{metrics.max_drawdown:.1%}</td>'
-                f'<td>{metrics.annualized_volatility:.1%}</td></tr>'
+                f'<td class="drawdown">{max_drawdown:.1%}</td></tr>'
             )
     performance_table = ''.join(performance_rows)
 
@@ -515,8 +512,7 @@ try:
             )
             st.markdown(f"""
             <table class="performance-table">
-                <caption>按信号活跃日计算，年化按 252 个交易日</caption>
-                <thead><tr><th>组合</th><th>年化</th><th>最大回撤</th><th>波动率</th></tr></thead>
+                <thead><tr><th>组合</th><th>最大回撤</th></tr></thead>
                 <tbody>{performance_table}</tbody>
             </table>
             """, unsafe_allow_html=True)
