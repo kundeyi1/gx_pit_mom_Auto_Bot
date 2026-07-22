@@ -6,6 +6,12 @@ from plotly.subplots import make_subplots
 import os
 from datetime import datetime
 from src.analysis import GXPitMomActions
+from src.data_provider import WindLocalProvider
+from src.backtest import (
+    build_auto_updating_nav,
+    calculate_performance_metrics,
+    load_backtest_nav,
+)
 
 # --- Page Config ---
 st.set_page_config(
@@ -26,27 +32,28 @@ st.markdown("""
         padding: 20px;
         margin-bottom: 20px;
     }
-    .market-summary-panel {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.backtest-header) {
         background-color: #141414;
-        border: 1px solid #2c2c2c;
-        border-radius: 8px;
-        padding: 18px 18px 16px 18px;
-        min-height: 560px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 16px;
+        border-color: #2c2c2c;
+        min-height: 580px;
+        padding: 14px 14px 12px 14px;
     }
+    .backtest-header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .backtest-title { color:#c9d1d9; font-size:1rem; font-weight:700; }
+    .backtest-mode { color:#8b949e; font-size:0.7rem; white-space:nowrap; }
+    .performance-table { width:100%; border-collapse:collapse; margin:0 0 10px 0; }
+    .performance-table caption { color:#6e7681; font-size:0.62rem; text-align:left; padding:0 0 3px 4px; }
+    .performance-table th { color:#8b949e; font-size:0.65rem; font-weight:500; padding:3px 4px; text-align:right; border-bottom:1px solid #2c2c2c; }
+    .performance-table td { color:#c9d1d9; font-size:0.68rem; padding:3px 4px; text-align:right; border-bottom:1px solid #20242a; }
+    .performance-table th:first-child, .performance-table td:first-child { text-align:left; }
+    .performance-table td:first-child { font-weight:600; }
+    .performance-table .drawdown { color:#f85149; }
+    .market-summary-meta { border-top:1px solid #2c2c2c; padding-top:10px; margin-top:2px; }
     .market-summary-title { color: #c9d1d9; font-size: 1.15rem; font-weight: 700; }
     .market-summary-code { color: #8b949e; font-size: 0.82rem; margin-top: 4px; }
-    .market-stat {
-        border-top: 1px solid #2c2c2c;
-        padding-top: 16px;
-    }
-    .market-signal {
-        border-top: 1px solid #2c2c2c;
-        padding-top: 16px;
-    }
+    .market-stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .market-stat-card { background:#111111; border:1px solid #2c2c2c; border-radius:6px; padding:9px 10px; }
+    .market-signal { grid-column:1 / -1; background:#111111; border:1px solid #2c2c2c; border-radius:6px; padding:9px 10px; }
     .signal-value { font-size: 1.15rem; font-weight: 700; line-height: 1.35; }
     .column-label { color: #8b949e; font-size: 0.9em; }
     .value-label { font-size: 1.5em; font-weight: bold; }
@@ -60,6 +67,10 @@ DATA_FILES = (
     'ZX_EJHY.xlsx',
     'group_assignment_details_zx_yjhy.csv',
     'group_assignment_details_zx_ejhy.csv',
+    'backtest_nav_zx_yjhy.csv',
+    'backtest_nav_zx_ejhy.csv',
+    'backtest_signal_groups_zx_yjhy.csv',
+    'backtest_signal_groups_zx_ejhy.csv',
 )
 
 EXCLUDED_ASSET_KEYWORDS = ('资产管理',)
@@ -161,13 +172,109 @@ def _drop_excluded_from_detail(detail_df):
     return detail_df.loc[mask].copy()
 
 
+def _build_backtest_nav_figure(nav_specs):
+    """Render long and long-short NAV in stacked panels."""
+    subplot_titles = [f"{label} · {result.n_groups}组" for label, result in nav_specs]
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.10,
+        subplot_titles=subplot_titles,
+    )
+    colors = {"long": "#ff4b4b", "long_short": "#4c9aff"}
+
+    for row, (label, result) in enumerate(nav_specs, start=1):
+        for key, legend_label in (
+            ("long", "多头组合"),
+            ("long_short", "多空"),
+        ):
+            trace_label = f"{label} {legend_label}"
+            series = getattr(result, key)
+            fig.add_trace(
+                go.Scatter(
+                    x=series.index.strftime("%Y-%m-%d"),
+                    y=series.values,
+                    mode="lines",
+                    line=dict(color=colors[key], width=1.05),
+                    name=legend_label,
+                    legendgroup=key,
+                    showlegend=row == 1,
+                    hovertemplate=(
+                        f"{trace_label}<br>%{{x}}<br>净值 %{{y:.4f}}"
+                        "<extra></extra>"
+                    ),
+                ),
+                row=row,
+                col=1,
+            )
+        fig.add_hline(
+            y=1.0,
+            line=dict(color="#3a3f46", width=0.8, dash="dot"),
+            row=row,
+            col=1,
+        )
+
+    fig.update_layout(
+        height=315,
+        margin=dict(l=4, r=4, t=48, b=4),
+        template="plotly_dark",
+        paper_bgcolor="#141414",
+        plot_bgcolor="#141414",
+        font=dict(color="#c9d1d9", size=10),
+        hovermode="x unified",
+        dragmode=False,
+        legend=dict(
+            orientation="h",
+            x=1,
+            xanchor="right",
+            y=1.14,
+            yanchor="top",
+            font=dict(size=9, color="#8b949e"),
+        ),
+    )
+    fig.update_annotations(font=dict(size=10, color="#8b949e"), x=0, xanchor="left")
+    fig.update_xaxes(
+        type="category",
+        showgrid=False,
+        linecolor="#2c2c2c",
+        tickfont=dict(size=8, color="#8b949e"),
+        fixedrange=True,
+        nticks=5,
+    )
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
+    bottom_dates = nav_specs[-1][1].long.index.strftime("%Y-%m-%d")
+    tick_positions = np.linspace(0, len(bottom_dates) - 1, 5, dtype=int)
+    tick_dates = [bottom_dates[position] for position in tick_positions]
+    fig.update_xaxes(
+        tickmode="array",
+        tickvals=tick_dates,
+        ticktext=tick_dates,
+        row=2,
+        col=1,
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#24282e",
+        zeroline=False,
+        tickformat=".2f",
+        tickfont=dict(size=8, color="#8b949e"),
+        fixedrange=True,
+        nticks=4,
+    )
+    return fig
+
+
 @st.cache_data(ttl=3600)  # 数据文件指纹变化时会立即刷新缓存
 def get_analysis_results(data_signature):
     analyzer = GXPitMomActions(data_dir='./data/')
     index_data = analyzer.dp.get_wide_table('000985_prices.xlsx')
     zx_yj_prices = analyzer.dp.get_wide_table('ZX_YJHY.xlsx')
-    zx_ej_prices = analyzer.dp.get_wide_table('ZX_EJHY.xlsx')
-    zx_ej_prices = _drop_excluded_assets(zx_ej_prices)
+    zx_ej_prices_all = analyzer.dp.get_wide_table('ZX_EJHY.xlsx')
+    zx_ej_prices = _drop_excluded_assets(zx_ej_prices_all)
+    backtest_provider = WindLocalProvider(data_dir='./data/', start_date='2013-01-01')
+    backtest_yj_prices = backtest_provider.get_wide_table('ZX_YJHY.xlsx')
+    backtest_ej_prices = backtest_provider.get_wide_table('ZX_EJHY.xlsx')
     
     sig_breakout = analyzer.gx_pit_breakout(index_data)
     sig_rebound = analyzer.gx_pit_rebound(index_data)
@@ -197,10 +304,52 @@ def get_analysis_results(data_signature):
             _filter_group_detail_to_current_universe(hist_detail[_LABEL_L2], zx_ej_prices)
         ),
     }
-    return results, index_data, zx_yj_prices, zx_ej_prices, hist_detail
+    def _load_signal_groups(path):
+        return pd.read_csv(path, parse_dates=['date'])
+
+    def _build_checked_nav(prices, group_path, snapshot_path, n_groups, expected):
+        try:
+            nav = build_auto_updating_nav(
+                prices,
+                _load_signal_groups(group_path),
+                signals_dict,
+                n_groups=n_groups,
+                holding_days=20,
+            )
+            checkpoint = pd.Timestamp('2026-02-02')
+            actual = (
+                nav.long.loc[checkpoint],
+                nav.short.loc[checkpoint],
+                nav.long_short.loc[checkpoint],
+            )
+            if max(abs(value - target) for value, target in zip(actual, expected)) > 1e-9:
+                raise ValueError("旧版回测检查点未通过")
+            return nav
+        except Exception as error:
+            snapshot = load_backtest_nav(snapshot_path, n_groups=n_groups)
+            snapshot.reason = str(error)
+            return snapshot
+
+    backtest_nav = {
+        _LABEL_L1: _build_checked_nav(
+            backtest_yj_prices,
+            './data/backtest_signal_groups_zx_yjhy.csv',
+            './data/backtest_nav_zx_yjhy.csv',
+            5,
+            (17.045276112646, 1.225478106637, 14.411344072385),
+        ),
+        _LABEL_L2: _build_checked_nav(
+            backtest_ej_prices,
+            './data/backtest_signal_groups_zx_ejhy.csv',
+            './data/backtest_nav_zx_ejhy.csv',
+            10,
+            (18.308491495852, 1.245589257048, 15.209996496207),
+        ),
+    }
+    return results, index_data, zx_yj_prices, zx_ej_prices, hist_detail, backtest_nav
 
 try:
-    results, index_data, zx_yj_prices, zx_ej_prices, hist_detail = get_analysis_results(get_data_signature())
+    results, index_data, zx_yj_prices, zx_ej_prices, hist_detail, backtest_nav = get_analysis_results(get_data_signature())
     
     if index_data.empty:
         st.warning(f"📊 暂无{_LABEL_BENCHMARK}数据。")
@@ -322,32 +471,77 @@ try:
             col=1,
         )
 
+    sector_price_map = {_LABEL_L1: zx_yj_prices, _LABEL_L2: zx_ej_prices}
+    nav_specs = [
+        (_LABEL_L1_SHORT, backtest_nav[_LABEL_L1]),
+        (_LABEL_L2_SHORT, backtest_nav[_LABEL_L2]),
+    ]
+    fig_nav = _build_backtest_nav_figure(nav_specs)
+    nav_latest_date = min(result.long.index[-1] for _, result in nav_specs)
+    nav_is_dynamic = all(result.source == 'computed' for _, result in nav_specs)
+    nav_mode = "自动重算" if nav_is_dynamic else "已验证快照"
+    nav_mode_text = f"{nav_mode} · 截至 {nav_latest_date:%Y-%m-%d}"
+    performance_rows = []
+    for label, result in nav_specs:
+        for portfolio_label, series in (
+            ("多头", result.long),
+            ("多空", result.long_short),
+        ):
+            metrics = calculate_performance_metrics(series)
+            performance_rows.append(
+                f'<tr><td>{label}{portfolio_label}</td>'
+                f'<td>{metrics.annualized_return:+.1%}</td>'
+                f'<td class="drawdown">{metrics.max_drawdown:.1%}</td>'
+                f'<td>{metrics.annualized_volatility:.1%}</td></tr>'
+            )
+    performance_table = ''.join(performance_rows)
+
     price_color = "#3fb950" if price_pct < 0 else "#f85149"
     signal_color = "#58a6ff" if current_has_signal else "#8b949e"
-    market_col, chart_col = st.columns([1, 2.8], gap="large")
+    market_col, chart_col = st.columns([1.35, 2.65], gap="large")
     with market_col:
-        st.markdown(f"""
-        <div class="market-summary-panel">
-            <div>
+        with st.container(border=True):
+            st.markdown(f"""
+            <div class="backtest-header">
+                <div class="backtest-title">回测净值</div>
+                <div class="backtest-mode">{nav_mode_text}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.plotly_chart(
+                fig_nav,
+                width="stretch",
+                config={"displayModeBar": False, "scrollZoom": False},
+                key="backtest_nav_chart",
+            )
+            st.markdown(f"""
+            <table class="performance-table">
+                <caption>按信号活跃日计算，年化按 252 个交易日</caption>
+                <thead><tr><th>组合</th><th>年化</th><th>最大回撤</th><th>波动率</th></tr></thead>
+                <tbody>{performance_table}</tbody>
+            </table>
+            """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="market-summary-meta">
                 <div class="market-summary-title">{_LABEL_BENCHMARK}</div>
                 <div class="market-summary-code">{bench_code} · {latest_date_str}</div>
             </div>
-            <div class="market-stat">
-                <div class="column-label">最新价格</div>
-                <div class="value-label" style="color:{price_color}; font-size:2rem;">{current_price:.2f}</div>
+            <div class="market-stats-grid">
+                <div class="market-stat-card">
+                    <div class="column-label">最新价格</div>
+                    <div class="value-label" style="color:{price_color}; font-size:1.35rem;">{current_price:.2f}</div>
+                </div>
+                <div class="market-stat-card">
+                    <div class="column-label">当日涨跌幅</div>
+                    <div class="value-label" style="color:{price_color}; font-size:1.35rem;">{price_pct:+.2f}%</div>
+                </div>
+                <div class="market-signal">
+                    <div class="column-label">今日信号</div>
+                    <div class="signal-value" style="color:{signal_color};">{current_signal_type}</div>
+                </div>
             </div>
-            <div class="market-stat">
-                <div class="column-label">当日涨跌幅</div>
-                <div class="value-label" style="color:{price_color}; font-size:2rem;">{price_pct:+.2f}%</div>
-            </div>
-            <div class="market-signal">
-                <div class="column-label">今日信号</div>
-                <div class="signal-value" style="color:{signal_color};">{current_signal_type}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
     with chart_col:
-        st.plotly_chart(fig_k, use_container_width=True)
+        st.plotly_chart(fig_k, width="stretch")
 
     # --- Task 1 & 2: History Trace with Benchmarking ---
     st.markdown("### 📊 当前、历史信号结果统计")
@@ -378,8 +572,6 @@ try:
             st.markdown(f'<div style="text-align: right; font-size: 0.8em; margin-bottom: 15px; color: #8b949e; padding-right:10px;">同期{_LABEL_BENCHMARK}表现: <span style="color: {bench_color}; font-weight: bold;">{idx_ret:+.2f}%</span> (20D或至今)</div>', unsafe_allow_html=True)
 
     h_col1, h_col2 = st.columns(2)
-    sector_price_map = {_LABEL_L1: zx_yj_prices, _LABEL_L2: zx_ej_prices}
-
     def _compute_hist_portfolio_stats(detail_df):
         """基于 CSV 历史分组明细，按 date 聚合多头/多空 Top5/Top10 的期收益率。
 
