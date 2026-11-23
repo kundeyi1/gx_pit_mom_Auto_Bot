@@ -4,7 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
-from datetime import datetime
+from html import escape
+from pathlib import Path
 from src.analysis import GXPitMomActions
 from src.data_provider import WindLocalProvider
 from src.backtest import (
@@ -15,49 +16,30 @@ from src.backtest import (
 
 # --- Page Config ---
 st.set_page_config(
-    page_title="Quant_Auto_Bot Dashboard",
-    page_icon="🤖",
+    page_title="时点动量策略 · Quant Dashboard",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# --- Custom CSS for Dark Theme and Layout ---
-st.markdown("""
-<style>
-    .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .metric-card {
-        background-color: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.backtest-header) {
-        background-color: #141414;
-        border-color: #2c2c2c;
-        min-height: 580px;
-        padding: 14px 14px 12px 14px;
-    }
-    .backtest-header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-    .backtest-title { color:#c9d1d9; font-size:1rem; font-weight:700; }
-    .backtest-mode { color:#8b949e; font-size:0.7rem; white-space:nowrap; }
-    .performance-table { width:100%; border-collapse:collapse; margin:0 0 10px 0; }
-    .performance-table th { color:#8b949e; font-size:0.65rem; font-weight:500; padding:3px 4px; text-align:right; border-bottom:1px solid #2c2c2c; }
-    .performance-table td { color:#c9d1d9; font-size:0.68rem; padding:3px 4px; text-align:right; border-bottom:1px solid #20242a; }
-    .performance-table th:first-child, .performance-table td:first-child { text-align:left; }
-    .performance-table td:first-child { font-weight:600; }
-    .performance-table .drawdown { color:#f85149; }
-    .market-summary-meta { border-top:1px solid #2c2c2c; padding-top:10px; margin-top:2px; }
-    .market-summary-title { color: #c9d1d9; font-size: 1.15rem; font-weight: 700; }
-    .market-summary-code { color: #8b949e; font-size: 0.82rem; margin-top: 4px; }
-    .market-stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
-    .market-stat-card { background:#111111; border:1px solid #2c2c2c; border-radius:6px; padding:9px 10px; }
-    .market-signal { grid-column:1 / -1; background:#111111; border:1px solid #2c2c2c; border-radius:6px; padding:9px 10px; }
-    .signal-value { font-size: 1.15rem; font-weight: 700; line-height: 1.35; }
-    .column-label { color: #8b949e; font-size: 0.9em; }
-    .value-label { font-size: 1.5em; font-weight: bold; }
-</style>
-""", unsafe_allow_html=True)
+st.html(Path(__file__).with_name("dashboard.css"))
+
+
+def signal_label(value):
+    names = {"breakout": "突破", "rotation": "轮动", "rebound": "反弹"}
+    for key, label in names.items():
+        value = value.replace(key, label)
+    return value
+
+
+def rank_table(title, columns, rows):
+    headers = "".join(f"<th scope='col'>{name}</th>" for name in columns)
+    body = "".join(f"<tr>{row}</tr>" for row in rows)
+    st.html(
+        f"<section class='rank-panel'><div class='rank-title'>{title}</div>"
+        f"<table class='rank-table'><thead><tr>{headers}</tr></thead>"
+        f"<tbody>{body}</tbody></table></section>"
+    )
+
 
 # --- Data Loading & Analysis ---
 DATA_FILES = (
@@ -181,7 +163,7 @@ def _build_backtest_nav_figure(nav_specs):
         vertical_spacing=0.10,
         subplot_titles=subplot_titles,
     )
-    colors = {"long": "#ff4b4b", "long_short": "#4c9aff"}
+    colors = {"long": "#ef777d", "long_short": "#80bff1"}
 
     for row, (label, result) in enumerate(nav_specs, start=1):
         for key, legend_label in (
@@ -209,7 +191,7 @@ def _build_backtest_nav_figure(nav_specs):
             )
         fig.add_hline(
             y=1.0,
-            line=dict(color="#3a3f46", width=0.8, dash="dot"),
+            line=dict(color="#476584", width=0.8, dash="dot"),
             row=row,
             col=1,
         )
@@ -218,9 +200,9 @@ def _build_backtest_nav_figure(nav_specs):
         height=315,
         margin=dict(l=4, r=4, t=48, b=4),
         template="plotly_dark",
-        paper_bgcolor="#141414",
-        plot_bgcolor="#141414",
-        font=dict(color="#c9d1d9", size=10),
+        paper_bgcolor="#131c27",
+        plot_bgcolor="#131c27",
+        font=dict(color="#e9f0f7", size=10),
         hovermode="x unified",
         dragmode=False,
         legend=dict(
@@ -229,15 +211,15 @@ def _build_backtest_nav_figure(nav_specs):
             xanchor="right",
             y=1.14,
             yanchor="top",
-            font=dict(size=9, color="#8b949e"),
+            font=dict(size=9, color="#97a8bb"),
         ),
     )
-    fig.update_annotations(font=dict(size=10, color="#8b949e"), x=0, xanchor="left")
+    fig.update_annotations(font=dict(size=10, color="#97a8bb"), x=0, xanchor="left")
     fig.update_xaxes(
         type="category",
         showgrid=False,
-        linecolor="#2c2c2c",
-        tickfont=dict(size=8, color="#8b949e"),
+        linecolor="#283647",
+        tickfont=dict(size=8, color="#97a8bb"),
         fixedrange=True,
         nticks=5,
     )
@@ -254,10 +236,10 @@ def _build_backtest_nav_figure(nav_specs):
     )
     fig.update_yaxes(
         showgrid=True,
-        gridcolor="#24282e",
+        gridcolor="#223040",
         zeroline=False,
         tickformat=".2f",
-        tickfont=dict(size=8, color="#8b949e"),
+        tickfont=dict(size=8, color="#97a8bb"),
         fixedrange=True,
         nticks=4,
     )
@@ -361,17 +343,18 @@ try:
 
     # --- Header ---
     bench_code = "000985.CSI"
-    st.markdown("### 时点动量策略")
-    st.caption("基于中证全指择时信号与行业相对动量，跟踪一级、二级行业板块的轮动机会")
-
-    st.caption("2026-08-03 起，行业收益按 iFinD 行情续接 7 月末点位。11 月 23 日采用收盘快照。二级回测中的资产管理Ⅱ按同期唯一成分股续接，信号榜单沿用原有排除规则。")
-
+    st.html(f"""
+        <header class="dash-head">
+            <div><div class="dash-brand">QUANT DASHBOARD</div><h1>时点动量策略</h1></div>
+            <span class="dash-asof">行情日期　{latest_date_str}</span>
+        </header>
+    """)
     current_has_signal = False
     current_signal_type = "今日无信号"
     for sector in [_LABEL_L1, _LABEL_L2]:
         if results[sector] and results[sector][-1]['date'].date() == latest_date_dt.date():
             current_has_signal = True
-            current_signal_type = f"触发: {results[sector][-1]['type']}"
+            current_signal_type = signal_label(results[sector][-1]["type"])
 
     # --- Benchmark K-Line Chart ---
     chart_data = index_data.copy()
@@ -381,7 +364,7 @@ try:
     chart_x = chart_data.index.strftime('%Y-%m-%d')
     volume_col = 'volume' if 'volume' in chart_data.columns else 'amt'
     prev_close = chart_data['close'].shift(1).fillna(chart_data['open'])
-    volume_colors = np.where(chart_data['close'] >= prev_close, '#ff5722', '#00c875')
+    volume_colors = np.where(chart_data['close'] >= prev_close, '#ef777d', '#48cba4')
 
     fig_k = make_subplots(
         rows=2,
@@ -396,10 +379,10 @@ try:
         high=chart_data['high'],
         low=chart_data['low'],
         close=chart_data['close'],
-        increasing_line_color='#ff5722',
+        increasing_line_color='#ef777d',
         increasing_fillcolor='rgba(0,0,0,0)',
-        decreasing_line_color='#00c875',
-        decreasing_fillcolor='#00c875',
+        decreasing_line_color='#48cba4',
+        decreasing_fillcolor='#48cba4',
         whiskerwidth=0.55,
         name='K线',
     ), row=1, col=1)
@@ -407,7 +390,7 @@ try:
         x=chart_x,
         y=chart_data['ma5'],
         mode='lines',
-        line=dict(color='#e8e8e8', width=2),
+        line=dict(color='#80bff1', width=2),
         hoverinfo='skip',
         name='MA5',
     ), row=1, col=1)
@@ -415,7 +398,7 @@ try:
         x=chart_x,
         y=chart_data['ma20'],
         mode='lines',
-        line=dict(color='#f0a51a', width=2),
+        line=dict(color='#e5bc77', width=2),
         hoverinfo='skip',
         name='MA20',
     ), row=1, col=1)
@@ -429,23 +412,24 @@ try:
         name='成交量',
     ), row=2, col=1)
     fig_k.update_layout(
-        height=560,
-        margin=dict(l=4, r=4, t=8, b=4),
+        height=471,
+        margin=dict(l=4, r=4, t=32, b=4),
         template="plotly_dark",
-        showlegend=False,
+        showlegend=True,
+        legend=dict(orientation="h", y=1.08, x=0, font=dict(size=11)),
         hovermode='x unified',
         bargap=0.55,
         xaxis_rangeslider_visible=False,
-        paper_bgcolor='#111111',
-        plot_bgcolor='#111111',
-        font=dict(color='#c9d1d9'),
+        paper_bgcolor='#131c27',
+        plot_bgcolor='#131c27',
+        font=dict(color='#e9f0f7'),
         dragmode=False,
     )
     fig_k.update_xaxes(
         type='category',
         showgrid=False,
         showticklabels=False,
-        linecolor='#2c2c2c',
+        linecolor='#283647',
         zeroline=False,
         rangeslider_visible=False,
         row=1,
@@ -456,7 +440,7 @@ try:
         showgrid=False,
         nticks=7,
         tickangle=0,
-        linecolor='#2c2c2c',
+        linecolor='#283647',
         zeroline=False,
         row=2,
         col=1,
@@ -464,9 +448,10 @@ try:
     for row_idx in [1, 2]:
         fig_k.update_yaxes(
             showgrid=True,
-            gridcolor='#2c2c2c',
+            gridcolor='#283647',
             zeroline=False,
-            showticklabels=False,
+            showticklabels=row_idx == 1,
+            side="right",
             fixedrange=True,
             row=row_idx,
             col=1,
@@ -481,7 +466,7 @@ try:
     nav_latest_date = min(result.long.index[-1] for _, result in nav_specs)
     nav_is_dynamic = all(result.source == 'computed' for _, result in nav_specs)
     nav_mode = "自动重算" if nav_is_dynamic else "已验证快照"
-    nav_mode_text = f"{nav_mode} · 截至 {nav_latest_date:%Y-%m-%d}"
+    nav_mode_text = nav_mode
     performance_rows = []
     for label, result in nav_specs:
         for portfolio_label, series in (
@@ -495,11 +480,19 @@ try:
             )
     performance_table = ''.join(performance_rows)
 
-    price_color = "#3fb950" if price_pct < 0 else "#f85149"
-    signal_color = "#58a6ff" if current_has_signal else "#8b949e"
-    market_col, chart_col = st.columns([1.35, 2.65], gap="large")
+    price_color = "#48cba4" if price_pct < 0 else "#ef777d"
+    signal_color = "#80bff1" if current_has_signal else "#97a8bb"
+    st.html(f"""
+        <div class="metric-strip">
+            <div><small>{_LABEL_BENCHMARK} · {bench_code}</small><strong>{current_price:,.2f}</strong></div>
+            <div><small>当日涨跌幅</small><strong style="color:{price_color}">{price_pct:+.2f}%</strong></div>
+            <div><small>今日信号</small><strong style="color:{signal_color}">{current_signal_type}</strong></div>
+            <div><small>回测净值截至</small><strong>{nav_latest_date:%Y-%m-%d}</strong></div>
+        </div>
+    """)
+    market_col, chart_col = st.columns([1, 1.65], gap="medium")
     with market_col:
-        with st.container(border=True):
+        with st.container(key="nav_panel"):
             st.markdown(f"""
             <div class="backtest-header">
                 <div class="backtest-title">回测净值</div>
@@ -508,6 +501,7 @@ try:
             """, unsafe_allow_html=True)
             st.plotly_chart(
                 fig_nav,
+                theme=None,
                 width="stretch",
                 config={"displayModeBar": False, "scrollZoom": False},
                 key="backtest_nav_chart",
@@ -518,31 +512,13 @@ try:
                 <tbody>{performance_table}</tbody>
             </table>
             """, unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class="market-summary-meta">
-                <div class="market-summary-title">{_LABEL_BENCHMARK}</div>
-                <div class="market-summary-code">{bench_code} · {latest_date_str}</div>
-            </div>
-            <div class="market-stats-grid">
-                <div class="market-stat-card">
-                    <div class="column-label">最新价格</div>
-                    <div class="value-label" style="color:{price_color}; font-size:1.35rem;">{current_price:.2f}</div>
-                </div>
-                <div class="market-stat-card">
-                    <div class="column-label">当日涨跌幅</div>
-                    <div class="value-label" style="color:{price_color}; font-size:1.35rem;">{price_pct:+.2f}%</div>
-                </div>
-                <div class="market-signal">
-                    <div class="column-label">今日信号</div>
-                    <div class="signal-value" style="color:{signal_color};">{current_signal_type}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    with chart_col:
-        st.plotly_chart(fig_k, width="stretch")
+    with chart_col, st.container(key="price_panel"):
+        st.html('<div class="backtest-header"><span class="backtest-title">中证全指行情</span>'
+                '<span class="backtest-mode">近 120 个交易日</span></div>')
+        st.plotly_chart(fig_k, width="stretch", theme=None)
 
     # --- Task 1 & 2: History Trace with Benchmarking ---
-    st.markdown("### 📊 当前、历史信号结果统计")
+    st.markdown("### 信号与组合表现")
     
     overall_last_sig_date, overall_last_sig_type = None, "N/A"
     for s in [_LABEL_L1, _LABEL_L2]:
@@ -554,10 +530,10 @@ try:
     idx_ret = 0.0
     if overall_last_sig_date:
         st.markdown(f"""
-        <div style="padding: 12px 20px; margin-bottom: 5px; background-color: #1c2128; border: 1px solid #30363d; border-radius: 8px; text-align: center;">
-            <span style="color: #8b949e;">触发日期: <b style="color: #c9d1d9;">{overall_last_sig_date.strftime('%Y-%m-%d')}</b></span>
-            <span style="color: #333; margin: 0 15px;">|</span>
-            <span style="color: #8b949e;">信号类型: <b style="color: #58a6ff;">{overall_last_sig_type}</b></span>
+        <div style="padding: 12px 20px; margin-bottom: 5px; background-color: #192636; border: 1px solid #283647; border-radius: 8px; text-align: center;">
+            <span style="color: #97a8bb;">触发日期: <b style="color: #e9f0f7;">{overall_last_sig_date.strftime('%Y-%m-%d')}</b></span>
+            <span style="color: #283647; margin: 0 15px;">|</span>
+            <span style="color: #97a8bb;">信号类型: <b style="color: #80bff1;">{signal_label(overall_last_sig_type)}</b></span>
         </div>
         """, unsafe_allow_html=True)
         
@@ -566,8 +542,8 @@ try:
         if len(idx_after_sig) > 1:
             i_target_idx = min(20, len(idx_after_sig) - 1)
             idx_ret = (idx_after_sig['close'].iloc[i_target_idx] / idx_after_sig['close'].iloc[0] - 1) * 100
-            bench_color = "#f85149" if idx_ret >= 0 else "#3fb950"
-            st.markdown(f'<div style="text-align: right; font-size: 0.8em; margin-bottom: 15px; color: #8b949e; padding-right:10px;">同期{_LABEL_BENCHMARK}表现: <span style="color: {bench_color}; font-weight: bold;">{idx_ret:+.2f}%</span> (20D或至今)</div>', unsafe_allow_html=True)
+            bench_color = "#ef777d" if idx_ret >= 0 else "#48cba4"
+            st.markdown(f'<div style="text-align: right; font-size: 0.8em; margin-bottom: 15px; color: #97a8bb; padding-right:10px;">同期{_LABEL_BENCHMARK}表现: <span style="color: {bench_color}; font-weight: bold;">{idx_ret:+.2f}%</span> (20D或至今)</div>', unsafe_allow_html=True)
 
     h_col1, h_col2 = st.columns(2)
     def _compute_hist_portfolio_stats(detail_df):
@@ -601,7 +577,7 @@ try:
         return pd.DataFrame(rows).sort_values('date').reset_index(drop=True)
 
     def _color(v):
-        return '#f85149' if v >= 0 else '#3fb950'
+        return "#ef777d" if v > 0 else "#48cba4" if v < 0 else "#97a8bb"
 
     for i, sector in enumerate([_LABEL_L1, _LABEL_L2]):
         with [h_col1, h_col2][i]:
@@ -628,21 +604,21 @@ try:
                 ls_avg, ls_wr = _stat(ls_col)
 
                 st.markdown(f"""
-                <div style="padding: 12px 14px; margin-bottom: 12px; background: linear-gradient(180deg,#161b22 0%,#12171e 100%); border: 1px solid #30363d; border-radius: 8px;">
+                <div style="padding: 12px 14px; margin-bottom: 12px; background: #131c27; border: 1px solid #283647; border-radius: 8px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <span style="color:#c9d1d9; font-size:0.9em; font-weight:600;">📈 历史组合表现</span>
-                        <span style="color:#8b949e; font-size:0.75em;">样本 {n_total} 次</span>
+                        <span style="color:#e9f0f7; font-size:0.9em; font-weight:600;">历史组合表现</span>
+                        <span style="color:#97a8bb; font-size:0.75em;">样本 {n_total} 次</span>
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #58a6ff;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多头 {tag} · 平均</div>
+                        <div style="background-color:#192636; padding:10px; border-radius:6px; border-left:3px solid #80bff1;">
+                            <div style="color:#97a8bb; font-size:0.72em; margin-bottom:4px;">多头 {tag} · 平均</div>
                             <div style="color:{_color(lg_avg)}; font-weight:bold; font-size:1.1em;">{lg_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg_ex)};">{lg_ex:+.2f}%</span> · 胜率 <span style="color:#c9d1d9;">{lg_wr:.0f}%</span></div>
+                            <div style="color:#97a8bb; font-size:0.7em; margin-top:2px;">超额 <span style="color:{_color(lg_ex)};">{lg_ex:+.2f}%</span> · 胜率 <span style="color:#e9f0f7;">{lg_wr:.0f}%</span></div>
                         </div>
-                        <div style="background-color:#1c2128; padding:10px; border-radius:6px; border-left:3px solid #d29922;">
-                            <div style="color:#8b949e; font-size:0.72em; margin-bottom:4px;">多空 {tag} · 平均</div>
+                        <div style="background-color:#192636; padding:10px; border-radius:6px; border-left:3px solid #b1bfd0;">
+                            <div style="color:#97a8bb; font-size:0.72em; margin-bottom:4px;">多空 {tag} · 平均</div>
                             <div style="color:{_color(ls_avg)}; font-weight:bold; font-size:1.1em;">{ls_avg:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#c9d1d9;">{ls_wr:.0f}%</span></div>
+                            <div style="color:#97a8bb; font-size:0.7em; margin-top:2px;">胜率 <span style="color:#e9f0f7;">{ls_wr:.0f}%</span></div>
                         </div>
                     </div>
                 </div>
@@ -672,58 +648,47 @@ try:
                 hold_days = min(20, max(len(after_prices) - 1, 0))
 
                 st.markdown(f"""
-                <div style="padding:10px 14px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-left:3px solid #58a6ff; border-radius:6px;">
+                <div style="padding:10px 14px; margin-bottom:8px; background:#131c27; border:1px solid #283647; border-left:3px solid #80bff1; border-radius:6px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div style="color:#c9d1d9; font-size:0.85em;">
-                            <span style="color:#8b949e;">最近触发</span>
+                        <div style="color:#e9f0f7; font-size:0.85em;">
+                            <span style="color:#97a8bb;">最近触发</span>
                             &nbsp;<b>{last_sig['date'].strftime('%Y-%m-%d')}</b>
-                            &nbsp;·&nbsp;<span style="color:#58a6ff;">{last_sig['type']}</span>
+                            &nbsp;·&nbsp;<span style="color:#80bff1;">{signal_label(last_sig['type'])}</span>
                         </div>
-                        <span style="color:#8b949e; font-size:0.72em;">当期 · 持有 {hold_days}D</span>
+                        <span style="color:#97a8bb; font-size:0.72em;">当期 · 持有 {hold_days}D</span>
                     </div>
                     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:6px;">
-                        <div style="background-color:#1c2128; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #58a6ff;">
-                            <div style="color:#8b949e; font-size:0.7em;">多头 {tag}</div>
+                        <div style="background-color:#192636; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #80bff1;">
+                            <div style="color:#97a8bb; font-size:0.7em;">多头 {tag}</div>
                             <div style="color:{_color(cur_long)}; font-weight:bold; font-size:1em;">{cur_long:+.2f}%</div>
-                            <div style="color:#8b949e; font-size:0.68em; margin-top:2px;">超额 <span style="color:{_color(cur_long_ex)};">{cur_long_ex:+.2f}%</span></div>
+                            <div style="color:#97a8bb; font-size:0.68em; margin-top:2px;">超额 <span style="color:{_color(cur_long_ex)};">{cur_long_ex:+.2f}%</span></div>
                         </div>
-                        <div style="background-color:#1c2128; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #d29922;">
-                            <div style="color:#8b949e; font-size:0.7em;">多空 {tag}</div>
+                        <div style="background-color:#192636; padding:8px 6px; border-radius:4px; text-align:center; border-left:2px solid #b1bfd0;">
+                            <div style="color:#97a8bb; font-size:0.7em;">多空 {tag}</div>
                             <div style="color:{_color(cur_ls)}; font-weight:bold; font-size:1em;">{cur_ls:+.2f}%</div>
                         </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                def _render_factor_table(title, factor_items, accent_color):
-                    st.markdown(f"""
-                    <div style="padding: 8px 10px; margin: 10px 0 6px; background-color:#21262d; border-left:3px solid {accent_color}; border-radius:4px; color:#c9d1d9; font-size:0.9em; font-weight:600;">
-                        {title}
-                    </div>
-                    <div style="padding: 10px; background-color: #21262d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:6px; font-weight: bold; color: #8b949e;">
-                        <div style="flex:2.2;">行业名称</div>
-                        <div style="flex:1; text-align:center;">因子值</div>
-                        <div style="flex:1.8; text-align:right;">收益率(超额)</div>
-                    </div>""", unsafe_allow_html=True)
-
-                    for name, val in factor_items.items():
-                        r_val = returns.get(name, 0.0)
-                        excess = r_val - idx_ret
-                        st.markdown(f"""
-                        <div style="padding: 10px; background-color: #161b22; border-left: 3px solid #30363d; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom:4px;">
-                            <div style="flex:2.2; color:#c9d1d9;"><b>{name}</b></div>
-                            <div style="flex:1; text-align:center; color:#58a6ff;">{val:.4f}</div>
-                            <div style="flex:1.8; text-align:right;">
-                                <span style="color:{_color(r_val)}; font-weight:bold;">{r_val:+.2f}%</span>
-                                <span style="color:#8b949e; font-size:0.8em; margin-left:5px;">[<span style="color:{_color(excess)}">{excess:+.2f}%</span>]</span>
-                            </div>
-                        </div>""", unsafe_allow_html=True)
-
-                _render_factor_table(f"因子值前 {tag}", last_sig['series'].head(top_n), "#58a6ff")
-                _render_factor_table(f"因子值后 {tag}", last_sig['series'].tail(top_n).sort_values(ascending=False), "#d29922")
+                for label, items in (
+                    ("前", last_sig["series"].head(top_n)),
+                    ("后", last_sig["series"].tail(top_n).sort_values()),
+                ):
+                    rows = []
+                    for name, value in items.items():
+                        ret = returns.get(name, 0.0)
+                        excess = ret - idx_ret
+                        sector_name = escape(str(name).removeprefix("中信行业指数:"))
+                        rows.append(
+                            f"<td>{sector_name}</td><td>{value:.4f}</td>"
+                            f"<td style='color:{_color(ret)}'>{ret:+.2f}%</td>"
+                            f"<td style='color:{_color(excess)}'>{excess:+.2f}%</td>"
+                        )
+                    rank_table(f"因子值{label} {top_n}", ("行业", "因子值", "收益率", "超额收益"), rows)
 
     # --- 今日行业涨幅 Top10 ---
-    st.markdown("### 🚀 当天行业涨幅 Top10")
+    st.markdown("### 行业涨跌幅排行")
     top_col1, top_col2 = st.columns(2)
     daily_ret_map = {
         _LABEL_L1: zx_yj_prices.pct_change().iloc[-1] * 100 if len(zx_yj_prices) > 1 else pd.Series(dtype=float),
@@ -736,33 +701,26 @@ try:
             top10 = sorted_daily_ret.head(10)
             bottom10 = sorted_daily_ret.tail(10).sort_values(ascending=False)
             st.markdown(f"""
-            <div style="padding:10px 12px; margin-bottom:8px; background:linear-gradient(180deg,#161b22 0%,#12171e 100%); border:1px solid #30363d; border-radius:8px;">
+            <div style="padding:10px 12px; margin-bottom:8px; background:#131c27; border:1px solid #283647; border-radius:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="color:#c9d1d9; font-weight:600; font-size:0.9em;">{sector}</span>
-                    <span style="color:#8b949e; font-size:0.72em;">{latest_date_str}</span>
+                    <span style="color:#e9f0f7; font-weight:600; font-size:0.9em;">{sector}</span>
+                    <span style="color:#97a8bb; font-size:0.72em;">{latest_date_str}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            def _render_daily_return_list(title, items, accent_color):
-                st.markdown(f"""
-                <div style="padding:8px 10px; margin:10px 0 6px; background-color:#21262d; border-left:3px solid {accent_color}; border-radius:4px; color:#c9d1d9; font-size:0.88em; font-weight:600;">
-                    {title}
-                </div>
-                """, unsafe_allow_html=True)
-
-                for rank, (name, ret_val) in enumerate(items.items(), start=1):
-                    st.markdown(f"""
-                    <div style="padding:9px 10px; margin-bottom:4px; background-color:#161b22; border-left:3px solid #58a6ff; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
-                        <div style="color:#c9d1d9; font-size:0.9em;"><span style="color:#8b949e; margin-right:8px;">#{rank}</span><b>{name}</b></div>
-                        <div style="color:{'#f85149' if ret_val >= 0 else '#3fb950'}; font-weight:bold; font-size:0.92em;">{ret_val:+.2f}%</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
             if top10.empty:
-                st.markdown('<div style="padding:10px; color:#8b949e; background-color:#161b22; border:1px dashed #30363d; border-radius:6px;">暂无可用数据</div>', unsafe_allow_html=True)
+                st.caption("暂无行业涨跌幅数据")
             else:
-                _render_daily_return_list("涨幅前 Top10", top10, "#58a6ff")
-                _render_daily_return_list("涨幅后 Top10", bottom10, "#d29922")
+                for label, items in (("涨幅前十", top10), ("涨幅后十", bottom10)):
+                    rows = []
+                    for rank, (name, ret) in enumerate(items.items(), start=1):
+                        sector_name = escape(str(name).removeprefix("中信行业指数:"))
+                        rows.append(
+                            f"<td><span class='number'>{rank}</span>{sector_name}</td>"
+                            f"<td style='color:{_color(ret)}'>{ret:+.2f}%</td>"
+                        )
+                    rank_table(label, ("行业", "当日涨跌幅"), rows)
+    with st.expander("数据口径"):
+        st.caption("2026-08-03 起，行业收益按 iFinD 行情续接 7 月末点位。11 月 23 日采用收盘快照。二级回测中的资产管理Ⅱ按同期唯一成分股续接，信号榜单沿用原有排除规则。")
 except Exception as e: st.error(f"Error: {e}")
-st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
