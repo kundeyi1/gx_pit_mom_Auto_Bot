@@ -153,7 +153,7 @@ def _drop_excluded_from_detail(detail_df):
     return detail_df.loc[mask].copy()
 
 
-def _build_backtest_nav_figure(nav_specs):
+def _build_backtest_nav_figure(nav_specs, trading_dates):
     """Render long and long-short NAV in stacked panels."""
     subplot_titles = [f"{label} · {result.n_groups}组" for label, result in nav_specs]
     fig = make_subplots(
@@ -163,6 +163,9 @@ def _build_backtest_nav_figure(nav_specs):
         vertical_spacing=0.10,
         subplot_titles=subplot_titles,
     )
+    latest_nav_date = max(result.long.index[-1] for _, result in nav_specs)
+    window = trading_dates[trading_dates <= latest_nav_date][-60:]
+    window_start, window_end = window[0], window[-1]
     colors = {"long": "#ef777d", "long_short": "#80bff1"}
 
     for row, (label, result) in enumerate(nav_specs, start=1):
@@ -189,22 +192,22 @@ def _build_backtest_nav_figure(nav_specs):
                 row=row,
                 col=1,
             )
-        fig.add_hline(
-            y=1.0,
-            line=dict(color="#476584", width=0.8, dash="dot"),
-            row=row,
-            col=1,
-        )
+        fig.add_hline(y=1.0, line=dict(color="#476584", width=0.8, dash="dot"), row=row, col=1)
+        visible = pd.concat([result.long, result.long_short], axis=1).loc[window_start:window_end]
+        if not visible.empty:
+            low, high = visible.min().min(), visible.max().max()
+            padding = max((high - low) * 0.08, 0.01)
+            fig.update_yaxes(range=[low - padding, high + padding], row=row, col=1)
 
     fig.update_layout(
-        height=315,
-        margin=dict(l=4, r=4, t=48, b=4),
+        height=350,
+        margin=dict(l=4, r=4, t=68, b=12),
         template="plotly_dark",
         paper_bgcolor="#131c27",
         plot_bgcolor="#131c27",
         font=dict(color="#e9f0f7", size=10),
         hovermode="x unified",
-        dragmode=False,
+        dragmode="zoom",
         legend=dict(
             orientation="h",
             x=1,
@@ -216,31 +219,23 @@ def _build_backtest_nav_figure(nav_specs):
     )
     fig.update_annotations(font=dict(size=10, color="#97a8bb"), x=0, xanchor="left")
     fig.update_xaxes(
-        type="category",
+        type="date",
+        range=[window_start - pd.Timedelta(hours=12), window_end + pd.Timedelta(hours=12)],
+        tickformat="%y-%m-%d",
         showgrid=False,
         linecolor="#283647",
-        tickfont=dict(size=8, color="#97a8bb"),
-        fixedrange=True,
-        nticks=5,
+        tickfont=dict(size=9, color="#97a8bb"),
+        nticks=4,
+        fixedrange=False,
     )
     fig.update_xaxes(showticklabels=False, row=1, col=1)
-    bottom_dates = nav_specs[-1][1].long.index.strftime("%Y-%m-%d")
-    tick_positions = np.linspace(0, len(bottom_dates) - 1, 5, dtype=int)
-    tick_dates = [bottom_dates[position] for position in tick_positions]
-    fig.update_xaxes(
-        tickmode="array",
-        tickvals=tick_dates,
-        ticktext=tick_dates,
-        row=2,
-        col=1,
-    )
     fig.update_yaxes(
         showgrid=True,
         gridcolor="#223040",
         zeroline=False,
         tickformat=".2f",
         tickfont=dict(size=8, color="#97a8bb"),
-        fixedrange=True,
+        fixedrange=False,
         nticks=4,
     )
     return fig
@@ -462,7 +457,7 @@ try:
         (_LABEL_L1_SHORT, backtest_nav[_LABEL_L1]),
         (_LABEL_L2_SHORT, backtest_nav[_LABEL_L2]),
     ]
-    fig_nav = _build_backtest_nav_figure(nav_specs)
+    fig_nav = _build_backtest_nav_figure(nav_specs, index_data.index)
     nav_latest_date = min(result.long.index[-1] for _, result in nav_specs)
     nav_is_dynamic = all(result.source == 'computed' for _, result in nav_specs)
     nav_mode = "自动重算" if nav_is_dynamic else "已验证快照"
@@ -496,14 +491,18 @@ try:
             st.markdown(f"""
             <div class="backtest-header">
                 <div class="backtest-title">回测净值</div>
-                <div class="backtest-mode">{nav_mode_text}</div>
+                <div class="backtest-mode">默认近 60 个交易日 · {nav_mode_text}</div>
             </div>
             """, unsafe_allow_html=True)
             st.plotly_chart(
                 fig_nav,
                 theme=None,
                 width="stretch",
-                config={"displayModeBar": False, "scrollZoom": False},
+                config={
+                    "displayModeBar": True, "displaylogo": False, "scrollZoom": True,
+                    "doubleClick": "reset",
+                    "modeBarButtonsToRemove": ["select2d", "lasso2d", "toImage"],
+                },
                 key="backtest_nav_chart",
             )
             st.markdown(f"""
