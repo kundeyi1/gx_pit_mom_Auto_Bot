@@ -360,9 +360,11 @@ try:
     price_pct = (index_data['close'].pct_change().iloc[-1] * 100)
 
     # --- Header ---
-    bench_code = "000985.SH"
+    bench_code = "000985.CSI"
     st.markdown("### 时点动量策略")
     st.caption("基于中证全指择时信号与行业相对动量，跟踪一级、二级行业板块的轮动机会")
+
+    st.caption("2026-08-03 起，行业收益按 iFinD 行情续接 7 月末点位。11 月 23 日采用收盘快照。二级回测中的资产管理Ⅱ按同期唯一成分股续接，信号榜单沿用原有排除规则。")
 
     current_has_signal = False
     current_signal_type = "今日无信号"
