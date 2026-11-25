@@ -153,7 +153,7 @@ def _drop_excluded_from_detail(detail_df):
     return detail_df.loc[mask].copy()
 
 
-def _build_backtest_nav_figure(nav_specs, trading_dates):
+def _build_backtest_nav_figure(nav_specs, trading_dates, sessions=60):
     """Render long and long-short NAV in stacked panels."""
     subplot_titles = [f"{label} · {result.n_groups}组" for label, result in nav_specs]
     fig = make_subplots(
@@ -163,9 +163,13 @@ def _build_backtest_nav_figure(nav_specs, trading_dates):
         vertical_spacing=0.10,
         subplot_titles=subplot_titles,
     )
-    latest_nav_date = max(result.long.index[-1] for _, result in nav_specs)
-    window = trading_dates[trading_dates <= latest_nav_date][-60:]
-    window_start, window_end = window[0], window[-1]
+    first_date = min(result.long.index.min() for _, result in nav_specs)
+    last_date = max(result.long.index.max() for _, result in nav_specs)
+    window_start, window_end = first_date, last_date
+    if sessions is not None:
+        window = trading_dates[(trading_dates >= first_date) & (trading_dates <= last_date)][-sessions:]
+        if len(window):
+            window_start = window[0]
     colors = {"long": "#ef777d", "long_short": "#80bff1"}
 
     for row, (label, result) in enumerate(nav_specs, start=1):
@@ -174,7 +178,7 @@ def _build_backtest_nav_figure(nav_specs, trading_dates):
             ("long_short", "多空"),
         ):
             trace_label = f"{label} {legend_label}"
-            series = getattr(result, key)
+            series = getattr(result, key).loc[window_start:window_end]
             fig.add_trace(
                 go.Scatter(
                     x=series.index.strftime("%Y-%m-%d"),
@@ -192,15 +196,16 @@ def _build_backtest_nav_figure(nav_specs, trading_dates):
                 row=row,
                 col=1,
             )
-        fig.add_hline(y=1.0, line=dict(color="#476584", width=0.8, dash="dot"), row=row, col=1)
         visible = pd.concat([result.long, result.long_short], axis=1).loc[window_start:window_end]
         if not visible.empty:
             low, high = visible.min().min(), visible.max().max()
             padding = max((high - low) * 0.08, 0.01)
-            fig.update_yaxes(range=[low - padding, high + padding], row=row, col=1)
+            if low <= 1 <= high:
+                fig.add_hline(y=1, line=dict(color="#476584", width=0.8, dash="dot"), row=row, col=1)
+            fig.update_yaxes(autorange=False, range=[low - padding, high + padding], row=row, col=1)
 
     fig.update_layout(
-        height=350,
+        height=420,
         margin=dict(l=4, r=4, t=68, b=12),
         template="plotly_dark",
         paper_bgcolor="#131c27",
@@ -221,6 +226,8 @@ def _build_backtest_nav_figure(nav_specs, trading_dates):
     fig.update_xaxes(
         type="date",
         range=[window_start - pd.Timedelta(hours=12), window_end + pd.Timedelta(hours=12)],
+        minallowed=window_start - pd.Timedelta(hours=12),
+        maxallowed=window_end + pd.Timedelta(hours=12),
         tickformat="%y-%m-%d",
         showgrid=False,
         linecolor="#283647",
@@ -235,7 +242,7 @@ def _build_backtest_nav_figure(nav_specs, trading_dates):
         zeroline=False,
         tickformat=".2f",
         tickfont=dict(size=8, color="#97a8bb"),
-        fixedrange=False,
+        fixedrange=True,
         nticks=4,
     )
     return fig
@@ -457,7 +464,6 @@ try:
         (_LABEL_L1_SHORT, backtest_nav[_LABEL_L1]),
         (_LABEL_L2_SHORT, backtest_nav[_LABEL_L2]),
     ]
-    fig_nav = _build_backtest_nav_figure(nav_specs, index_data.index)
     nav_latest_date = min(result.long.index[-1] for _, result in nav_specs)
     nav_is_dynamic = all(result.source == 'computed' for _, result in nav_specs)
     nav_mode = "自动重算" if nav_is_dynamic else "已验证快照"
@@ -491,9 +497,13 @@ try:
             st.markdown(f"""
             <div class="backtest-header">
                 <div class="backtest-title">回测净值</div>
-                <div class="backtest-mode">默认近 60 个交易日 · {nav_mode_text}</div>
+                <div class="backtest-mode">{nav_mode_text}</div>
             </div>
             """, unsafe_allow_html=True)
+            periods = {"近60日": 60, "近120日": 120, "近250日": 250, "全部": None}
+            period = st.radio("净值显示区间（交易日）", list(periods), horizontal=True,
+                              label_visibility="collapsed", key="nav_period")
+            fig_nav = _build_backtest_nav_figure(nav_specs, index_data.index, periods[period])
             st.plotly_chart(
                 fig_nav,
                 theme=None,
@@ -503,7 +513,7 @@ try:
                     "doubleClick": "reset",
                     "modeBarButtonsToRemove": ["select2d", "lasso2d", "toImage"],
                 },
-                key="backtest_nav_chart",
+                key=f"backtest_nav_chart_{period}",
             )
             st.markdown(f"""
             <table class="performance-table">
