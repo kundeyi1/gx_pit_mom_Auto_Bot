@@ -236,6 +236,12 @@ def _build_backtest_nav_figure(nav_specs, trading_dates, sessions=60):
         fixedrange=False,
     )
     fig.update_xaxes(showticklabels=False, row=1, col=1)
+    fig.update_xaxes(
+        title_text=f"{window_start:%Y-%m-%d} 至 {window_end:%Y-%m-%d}",
+        title_font=dict(size=10, color="#97a8bb"),
+        title_standoff=5,
+        row=2, col=1,
+    )
     fig.update_yaxes(
         showgrid=True,
         gridcolor="#223040",
@@ -467,7 +473,7 @@ try:
     nav_latest_date = min(result.long.index[-1] for _, result in nav_specs)
     nav_is_dynamic = all(result.source == 'computed' for _, result in nav_specs)
     nav_mode = "自动重算" if nav_is_dynamic else "已验证快照"
-    nav_mode_text = nav_mode
+    nav_mode_text = f"{nav_mode} · 持有期收益按日平摊"
     performance_rows = []
     for label, result in nav_specs:
         for portfolio_label, series in (
@@ -517,7 +523,7 @@ try:
             )
             st.markdown(f"""
             <table class="performance-table">
-                <thead><tr><th>组合</th><th>最大回撤</th></tr></thead>
+                <thead><tr><th>组合</th><th>全历史最大回撤</th></tr></thead>
                 <tbody>{performance_table}</tbody>
             </table>
             """, unsafe_allow_html=True)
